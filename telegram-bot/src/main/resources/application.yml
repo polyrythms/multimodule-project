@@ -1,0 +1,28 @@
+spring:
+  kafka:
+#    bootstrap-servers: kafka:29092
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: telegram-group
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  minio:
+#    url: http://minio:9000
+    url: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: audio-bucket
+
+telegram:
+  bot:
+    username:
+    token:
+
+
+logging:
+  level:
+    ru.polyrythms: DEBUG
+#    root: DEBUG
+    org.springframework.boot: DEBUG
