@@ -1,0 +1,25 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: audio-service-group-dev
+      auto-offset-reset: earliest
+
+minio:
+  url: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket: audio-bucket
+
+assemblyai:
+  api:
+    key: ${ASSEMBLYAI_API_KEY}
+
+logging:
+  level:
+    root: INFO
+    ru.polyrythms: DEBUG
+    org.springframework.kafka: DEBUG
+    org.apache.kafka: DEBUG
+    org.springframework.web.reactive.function.client.ExchangeFunctions: TRACE
+    reactor.netty.http.client: DEBUG

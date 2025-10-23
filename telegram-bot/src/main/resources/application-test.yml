@@ -1,0 +1,25 @@
+spring:
+  kafka:
+    bootstrap-servers: kafka:29092
+    consumer:
+      group-id: telegram-bot-group-test
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+minio:
+  url: http://minio:9000
+  access-key: ${MINIO_ROOT_USER}
+  secret-key: ${MINIO_ROOT_PASSWORD}
+  bucket: audio-bucket-test
+
+telegram:
+  bot:
+    username: ${TELEGRAM_BOT_USERNAME}
+    token: ${TELEGRAM_BOT_TOKEN}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.kafka: WARN

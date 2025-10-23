@@ -12,18 +12,53 @@
 
     <artifactId>kafka-commons</artifactId>
     <name>Kafka common module</name>
-    <description>Microservice for Telegram bot integration</description>
-
     <packaging>jar</packaging>
     <dependencies>
         <!-- Общие зависимости для DTO -->
         <dependency>
-            <groupId>org.apache.kafka</groupId>
-            <artifactId>kafka-clients</artifactId>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <scope>provided</scope> <!-- Уже есть в Spring Boot приложениях -->
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
     </dependencies>
+    <build>
+        <plugins>
+            <!-- Явно отключаем Spring Boot Maven Plugin для этого модуля -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip> <!-- Полностью отключаем плагин -->
+                    <classifier>exec</classifier>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <phase>none</phase> <!-- Отключаем выполнение -->
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

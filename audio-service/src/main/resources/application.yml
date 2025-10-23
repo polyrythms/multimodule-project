@@ -1,6 +1,6 @@
 spring:
   application:
-    name: telegram-bot
+    name: audio-service
   config:
     import: optional:file:.env[.properties]
   profiles:
@@ -26,7 +26,6 @@ app:
     partitions: 6
     replicas: 1
 
-logging:
-  level:
-    root: INFO
-    ru.polyrythms: DEBUG
+assemblyai:
+  api:
+    url: https://api.assemblyai.com/v2

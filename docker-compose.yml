@@ -1,59 +1,177 @@
-version: '3.8'
-
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.3.0
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-
+  # MinIO Service
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
+    env_file: .env
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
-  telegram-bot:
-    build: ./telegram-bot
-    depends_on:
-      - kafka
-      - minio
+  # Zookeeper Service
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.9.0
+    hostname: zookeeper
+    networks:
+      - app-network
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zk-data:/var/lib/zookeeper/data
+      - zk-logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Kafka Service
+  kafka:
+    image: confluentinc/cp-kafka:7.9.0
+    hostname: kafka
+    networks:
+      - app-network
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - ./kafka/topics.sh:/tmp/topics.sh
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:29092"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for Kafka to start...' &&
+        sleep 30 &&
+        /tmp/topics.sh &
+        /etc/confluent/docker/run
+      "
+
+  # Kafdrop UI
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    networks:
+      - app-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_CONNECT: kafka:29092
+      JVM_OPTS: "-Xms32M -Xmx64M"
+      SERVER_SERVLET_CONTEXT_PATH: "/"
+    ports:
+      - "19000:9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Telegram Bot Service
+  telegram-bot:
+    build:
+      context: ./telegram-bot
+      dockerfile: Dockerfile
+    env_file: .env
+    networks:
+      - app-network
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_MINIO_URL: http://minio:9000
     ports:
       - "8080:8080"
+    volumes:
+      - ./telegram-bot/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
 
-  assemblyai-service:
-    build: ./assemblyai-service
+  # Audio Service
+  audio-service:
+    build:
+      context: ./audio-service
+      dockerfile: Dockerfile
+    env_file: .env
+    networks:
+      - app-network
     depends_on:
-      - kafka
-      - minio
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_MINIO_URL: http://minio:9000
     ports:
-      - "8081:8081"
+      - "8081:8080"
+    volumes:
+      - ./audio-service/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   minio_data:
+    name: minio-data
+  zk-data:
+    name: zookeeper-data
+  zk-logs:
+    name: zookeeper-logs
+  kafka-data:
+    name: kafka-data

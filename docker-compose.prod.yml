@@ -1,0 +1,21 @@
+services:
+  telegram-bot:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  audio-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  kafka:
+    environment:
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1

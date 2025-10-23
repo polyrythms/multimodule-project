@@ -1,0 +1,4 @@
+databaseChangeLog:
+  # Начальная структура
+  - include:
+      file: db/changelog/initial/001-initial-schema.yaml
