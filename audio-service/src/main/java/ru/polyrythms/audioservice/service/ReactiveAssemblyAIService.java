@@ -1,8 +1,6 @@
 package ru.polyrythms.audioservice.service;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -49,28 +47,13 @@ public class ReactiveAssemblyAIService {
 
     private final WebClient webClient;
     private final MinioService minioService;
-    private final String apiKey;
 
-    /**
-     * Конструктор сервиса AssemblyAI.
-     *
-     * @param webClientBuilder билдер для создания WebClient
-     * @param minioService сервис для работы с MinIO хранилищем
-     * @param apiKey API ключ для аутентификации в AssemblyAI
-     * @param baseUrl базовый URL API AssemblyAI
-     */
     public ReactiveAssemblyAIService(
-            WebClient.Builder webClientBuilder,
-            MinioService minioService,
-            @Value("${assemblyai.api.key}") String apiKey,
-            @Value("${assemblyai.api.url}") String baseUrl) {
+            WebClient webClient,
+            MinioService minioService) {
 
-        this.webClient = webClientBuilder
-                .baseUrl(baseUrl)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, apiKey)
-                .build();
+        this.webClient = webClient;
         this.minioService = minioService;
-        this.apiKey = apiKey;
     }
 
     /**
@@ -88,7 +71,6 @@ public class ReactiveAssemblyAIService {
      * @param audioId идентификатор аудио файла в MinIO
      * @return Mono с распознанным текстом
      * @throws RuntimeException если транскрипция завершилась ошибкой или превышен таймаут
-     *
      * @see #uploadToAssemblyAI(byte[])
      * @see #submitTranscription(String)
      * @see #pollTranscriptionResult(String)
@@ -105,26 +87,59 @@ public class ReactiveAssemblyAIService {
     /**
      * Загружает аудио данные в AssemblyAI и возвращает URL загруженного файла.
      *
-     * <p>Использует endpoint POST /upload для загрузки бинарных данных аудио.
-     * В случае ошибки выполняет до 3 повторных попыток с экспоненциальным бэк-оффом.
+     * <p><b>Процесс загрузки:</b>
+     * <ol>
+     *   <li>Выполняет POST запрос к эндпоинту /upload AssemblyAI API</li>
+     *   <li>Передает бинарные данные аудио файла в теле запроса</li>
+     *   <li>Устанавливает необходимые заголовки для аутентификации и типа контента</li>
+     *   <li>Обрабатывает ответ от сервера и извлекает upload_url</li>
+     * </ol>
      *
-     * @param audioData бинарные данные аудио файла
+     * <p><b>Стратегия повторных попыток:</b>
+     * <ul>
+     *   <li>При возникновении ошибки выполняет до 3 повторных попыток</li>
+     *   <li>Использует экспоненциальный бэк-офф с начальной задержкой 2 секунды</li>
+     *   <li>Максимальная задержка между попытками: 10 секунд</li>
+     *   <li>Добавляет jitter (случайность) для предотвращения "толпы" запросов</li>
+     * </ul>
+     *
+     * <p><b>Обработка ошибок:</b>
+     * <ul>
+     *   <li>Логирует успешную загрузку с полученным URL</li>
+     *   <li>Логирует ошибки при неудачных попытках загрузки</li>
+     *   <li>При исчерпании всех попыток генерирует исключение с информацией о количестве попыток</li>
+     * </ul>
+     *
+     * <p><b>Таймауты:</b>
+     * <ul>
+     *   <li>Общий таймаут операции: 30 секунд</li>
+     * </ul>
+     *
+     * @param audioData бинарные данные аудио файла для загрузки
      * @return Mono с URL загруженного аудио файла в AssemblyAI
-     * @throws RuntimeException если загрузка не удалась после всех попыток
-     *
+     * @throws RuntimeException если загрузка не удалась после всех попыток или превышен таймаут
      * @see <a href="https://www.assemblyai.com/docs/audio-inputs#uploading-files-via-our-upload-endpoint">
-     *      AssemblyAI Upload Documentation</a>
+     * AssemblyAI Upload Documentation</a>
+     * @see WebClient
+     * @see Retry
      */
     private Mono<String> uploadToAssemblyAI(byte[] audioData) {
         return webClient.post()
                 .uri("/upload")
-                .header(HttpHeaders.AUTHORIZATION, apiKey)
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .bodyValue(audioData)
                 .retrieve()
                 .bodyToMono(UploadResponse.class)
                 .map(UploadResponse::getUploadUrl)
-                .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)));
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .jitter(0.5)
+                        .maxBackoff(Duration.ofSeconds(10))
+                        .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                            throw new RuntimeException("Upload failed after " + retrySignal.totalRetries() + " retries");
+                        }))
+                .timeout(Duration.ofSeconds(30))
+                .doOnSuccess(url -> log.info("Successfully uploaded audio to AssemblyAI, URL: {}", url))
+                .doOnError(e -> log.error("Failed to upload audio to AssemblyAI", e));
     }
 
     /**
@@ -137,16 +152,14 @@ public class ReactiveAssemblyAIService {
      * @param assemblyAiAudioUrl URL аудио файла, полученный после загрузки в AssemblyAI
      * @return Mono с идентификатором транскрипции (transcriptId)
      * @throws RuntimeException если отправка запроса не удалась после всех попыток
-     *
      * @see <a href="https://www.assemblyai.com/docs/transcription#requesting-a-transcription">
-     *      AssemblyAI Transcription Request Documentation</a>
+     * AssemblyAI Transcription Request Documentation</a>
      */
     private Mono<String> submitTranscription(String assemblyAiAudioUrl) {
         TranscriptionRequest request = new TranscriptionRequest(assemblyAiAudioUrl, TranscriptionRequest.LanguageCode.ru);
 
         return webClient.post()
                 .uri("/transcript")
-                .header(HttpHeaders.AUTHORIZATION, apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
@@ -171,10 +184,9 @@ public class ReactiveAssemblyAIService {
      * @param transcriptId идентификатор транскрипции, полученный при создании запроса
      * @return Mono с распознанным текстом
      * @throws RuntimeException если транскрипция завершилась ошибкой, превышен таймаут или лимит попыток
-     *
      * @see #getTranscriptionStatus(String)
      * @see <a href="https://www.assemblyai.com/docs/transcription#polling-for-transcription-results">
-     *      AssemblyAI Polling Documentation</a>
+     * AssemblyAI Polling Documentation</a>
      */
     private Mono<String> pollTranscriptionResult(String transcriptId) {
         log.debug("Starting to poll transcription result for transcriptId: {}", transcriptId);
@@ -236,16 +248,13 @@ public class ReactiveAssemblyAIService {
      *
      * @param transcriptId идентификатор транскрипции
      * @return Mono с объектом TranscriptionStatus, содержащим текущий статус и данные
-     *
      * @see <a href="https://www.assemblyai.com/docs/transcription#getting-the-transcription-result">
-     *      AssemblyAI Get Transcript Documentation</a>
+     * AssemblyAI Get Transcript Documentation</a>
      */
     private Mono<TranscriptionStatus> getTranscriptionStatus(String transcriptId) {
         return webClient.get()
                 .uri("/transcript/" + transcriptId)
-                .header(HttpHeaders.AUTHORIZATION, apiKey)
                 .retrieve()
                 .bodyToMono(TranscriptionStatus.class);
     }
-
 }
