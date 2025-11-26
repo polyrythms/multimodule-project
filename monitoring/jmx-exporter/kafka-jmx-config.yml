@@ -1,0 +1,9 @@
+---
+startDelaySeconds: 10
+ssl: false
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+hostPort: kafka:9999
+whitelistObjectNames: ["java.lang:*", "kafka.*:*"]
+rules:
+  - pattern: ".*"

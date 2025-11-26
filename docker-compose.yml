@@ -1,5 +1,4 @@
 services:
-  # MinIO Service
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -13,25 +12,27 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - app-network
+      app-network:
+        aliases:
+          - minio
+          - minio-service
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
 
-  # Zookeeper Service
   zookeeper:
     image: confluentinc/cp-zookeeper:7.9.0
     hostname: zookeeper
-    networks:
-      - app-network
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     volumes:
       - zk-data:/var/lib/zookeeper/data
       - zk-logs:/var/lib/zookeeper/log
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
@@ -39,12 +40,9 @@ services:
       retries: 10
       start_period: 30s
 
-  # Kafka Service
   kafka:
     image: confluentinc/cp-kafka:7.9.0
     hostname: kafka
-    networks:
-      - app-network
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -63,7 +61,7 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_DIRS: /var/lib/kafka/data
-      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_UNCLEAN_LEADER_ELEСTION_ENABLE: "false"
       KAFKA_MIN_INSYNC_REPLICAS: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     volumes:
@@ -71,6 +69,8 @@ services:
       - ./kafka/topics.sh:/tmp/topics.sh
     ports:
       - "9092:9092"
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:29092"]
       interval: 30s
@@ -78,19 +78,9 @@ services:
       retries: 10
       start_period: 60s
     restart: unless-stopped
-    command: >
-      sh -c "
-        echo 'Waiting for Kafka to start...' &&
-        sleep 30 &&
-        /tmp/topics.sh &
-        /etc/confluent/docker/run
-      "
 
-  # Kafdrop UI
   kafdrop:
     image: obsidiandynamics/kafdrop
-    networks:
-      - app-network
     depends_on:
       kafka:
         condition: service_healthy
@@ -100,20 +90,19 @@ services:
       SERVER_SERVLET_CONTEXT_PATH: "/"
     ports:
       - "19000:9000"
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000"]
       interval: 30s
       timeout: 10s
       retries: 5
 
-  # Telegram Bot Service
   telegram-bot:
     build:
       context: ./telegram-bot
       dockerfile: Dockerfile
     env_file: .env
-    networks:
-      - app-network
     depends_on:
       kafka:
         condition: service_healthy
@@ -121,27 +110,33 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_MINIO_URL: http://minio:9000
+      SPRING_CONFIG_LOCATION: "classpath:/,file:/app/resources/"
+      # Полная конфигурация для actuator
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics,env"
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW-DETAILS: "always"
+      MANAGEMENT_ENDPOINTS_ENABLED-BY-DEFAULT: "true"
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
+      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
     ports:
-      - "8080:8080"
+      - "8082:8080"
     volumes:
       - ./telegram-bot/logs:/app/logs
+      - ./telegram-bot/src/main/resources/:/app/resources/
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
-  # Audio Service
   audio-service:
     build:
       context: ./audio-service
       dockerfile: Dockerfile
     env_file: .env
-    networks:
-      - app-network
     depends_on:
       kafka:
         condition: service_healthy
@@ -149,22 +144,30 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_MINIO_URL: http://minio:9000
+      # Полная конфигурация для actuator
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics,env"
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW-DETAILS: "always"
+      MANAGEMENT_ENDPOINTS_ENABLED-BY-DEFAULT: "true"
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
+      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
     ports:
       - "8081:8080"
     volumes:
       - ./audio-service/logs:/app/logs
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 5
+      start_period: 90s
     restart: unless-stopped
 
 networks:
   app-network:
-    driver: bridge
+    external: true
+    name: app-network
 
 volumes:
   minio_data:
