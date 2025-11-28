@@ -1,21 +1,11 @@
 services:
   telegram-bot:
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+    image: ghcr.io/polyrythms/multimodule-project/telegram-bot:latest
+    # Убираем volumes с исходниками, т.к. ресурсы теперь в образе
+    volumes:
+      - ./telegram-bot/logs:/app/logs
 
   audio-service:
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-
-  kafka:
-    environment:
-      KAFKA_NUM_PARTITIONS: 6
-      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+    image: ghcr.io/polyrythms/multimodule-project/audio-service:latest
+    volumes:
+      - ./audio-service/logs:/app/logs
