@@ -36,25 +36,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
       - name: Build and push Telegram Bot
         uses: docker/build-push-action@v5
         with:
           context: ./telegram-bot
-          file: ./telegram-bot/Dockerfile.prod
+          file: ./telegram-bot/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/telegram-bot:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/telegram-bot:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/telegram-bot:latest
 
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
         with:
           context: ./audio-service
-          file: ./audio-service/Dockerfile.prod
+          file: ./audio-service/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/audio-service:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/audio-service:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/audio-service:latest
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
