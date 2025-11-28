@@ -440,12 +440,10 @@ public class VoiceMessageBot extends TelegramLongPollingBot {
         AudioDecryptionTask task = AudioDecryptionTask.createVoiceTask(audioId, chatId, audioUrl);
         kafkaTemplate.send(Topics.AUDIO_DECRYPTION_REQUESTS, task.getTaskId(), task);
 
-        // Отправляем подтверждение
-        String response = isGroupChat(message.getChat()) ?
-                "🎤 Голосовое сообщение принято в обработку..." :
-                "✅ Ваше голосовое сообщение принято в обработку...";
-
-        sendTextMessage(chatId, response);
+        if (!isGroupChat(message.getChat())) {
+            // Отправляем подтверждение
+            sendTextMessage(chatId, "✅ Ваше голосовое сообщение принято в обработку...");
+        }
     }
 
     public void sendTextMessage(Long chatId, String text) throws TelegramApiException {
