@@ -66,5 +66,5 @@ jobs:
             cd /opt/multimodule-project
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             # Принудительно скачиваем новые образы
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --pull always telegram-bot audio-service
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --pull always --force-recreate telegram-bot audio-service
             docker system prune -f
