@@ -38,6 +38,6 @@ jobs:
           script: |
             cd /opt/multimodule-project
             git pull origin main           # Обновляет код на сервере
-            docker-compose up -d --build telegram-bot audio-service  # Перезапускает сервисы
+            docker compose up -d --build telegram-bot audio-service  # Перезапускает сервисы
             docker system prune -f         # Очищает Docker от мусора
         # Подключается к VPS и деплоит новую версию
