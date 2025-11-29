@@ -48,8 +48,6 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/telegram-bot:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/telegram-bot:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
@@ -60,8 +58,6 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/audio-service:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/audio-service:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy:
     needs: build-and-push
