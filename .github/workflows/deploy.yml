@@ -74,22 +74,28 @@ jobs:
           script: |
             set -e
             cd /opt/multimodule-project
-            
-            # Создаем сеть если не существует
-            docker network create app-network || true
+
+            # Создаем сеть если не существует (игнорируем ошибку если уже есть)
+            docker network create app-network 2>/dev/null || true
 
             # Логинимся в GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Скачиваем ТОЛЬКО образы приложений с ПРОДАКШЕН конфигом
+            # Скачиваем ТОЛЬКО образы приложений
             docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml pull
 
-            # Перезапускаем ТОЛЬКО приложения с ПРОДАКШЕН конфигом
+            # Перезапускаем ТОЛЬКО приложения
             docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml up -d
 
             # Очистка старых образов
             docker image prune -f
 
-            # Проверяем статус
-            echo "=== Current running containers ==="
+            # Проверяем статус приложений
+            echo "=== Application containers status ==="
             docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml ps
+
+            # Ждем и проверяем здоровье
+            sleep 30
+            echo "=== Health checks ==="
+            curl -f http://localhost:8081/actuator/health || echo "Audio service health check failed"
+            curl -f http://localhost:8082/actuator/health || echo "Telegram bot health check failed"
