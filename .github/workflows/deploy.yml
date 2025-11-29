@@ -75,14 +75,22 @@ jobs:
             set -e
             cd /opt/multimodule-project
 
-            # Логинимся в registry (если используете GHCR)
+            # Логинимся в GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Скачиваем последние образы
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            # Скачиваем ТОЛЬКО образы приложений
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull telegram-bot audio-service
 
-            # Перезапускаем только приложения
+            # Останавливаем и удаляем ТОЛЬКО приложения
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop telegram-bot audio-service || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml rm -f telegram-bot audio-service || true
+
+            # Запускаем ТОЛЬКО приложения
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d telegram-bot audio-service
 
-            # Очистка
+            # Очистка старых образов
             docker image prune -f
+
+            # Проверяем статус
+            echo "=== Current running containers ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
