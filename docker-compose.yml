@@ -109,14 +109,10 @@ services:
       minio:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_PROFILES_ACTIVE: dev
       SPRING_CONFIG_LOCATION: "classpath:/,file:/app/resources/"
-      # Полная конфигурация для actuator
-      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics,env"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
       MANAGEMENT_ENDPOINT_HEALTH_SHOW-DETAILS: "always"
-      MANAGEMENT_ENDPOINTS_ENABLED-BY-DEFAULT: "true"
-      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
-      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
     ports:
       - "8082:8080"
     volumes:
@@ -130,7 +126,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    restart: unless-stopped
 
   audio-service:
     build:
@@ -143,17 +138,14 @@ services:
       minio:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      # Полная конфигурация для actuator
-      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics,env"
+      SPRING_PROFILES_ACTIVE: dev
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
       MANAGEMENT_ENDPOINT_HEALTH_SHOW-DETAILS: "always"
-      MANAGEMENT_ENDPOINTS_ENABLED-BY-DEFAULT: "true"
-      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
-      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
     ports:
       - "8081:8080"
     volumes:
       - ./audio-service/logs:/app/logs
+      - ./audio-service/src/main/resources/:/app/resources/
     networks:
       - app-network
     healthcheck:
@@ -162,19 +154,13 @@ services:
       timeout: 15s
       retries: 5
       start_period: 90s
-    restart: unless-stopped
 
 networks:
   app-network:
-    external: true
-    name: app-network
+    driver: bridge
 
 volumes:
   minio_data:
-    name: minio-data
   zk-data:
-    name: zookeeper-data
   zk-logs:
-    name: zookeeper-logs
   kafka-data:
-    name: kafka-data
