@@ -1,32 +1,4 @@
 services:
-  minio:
-    volumes:
-      - ./data/minio_data:/data
-    networks:
-      app-network:
-        aliases:
-          - minio
-          - minio-service
-
-  zookeeper:
-    volumes:
-      - ./data/zk-data:/var/lib/zookeeper/data
-      - ./data/zk-logs:/var/lib/zookeeper/log
-    networks:
-      - app-network
-
-  kafka:
-    volumes:
-      - ./data/kafka-data:/var/lib/kafka/data
-      - ./configs/kafka/topics.sh:/tmp/topics.sh
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  kafdrop:
-    networks:
-      - app-network
-
   telegram-bot:
     image: ghcr.io/polyrythms/multimodule-project/telegram-bot:latest
     environment:
@@ -57,13 +29,3 @@ networks:
   app-network:
     external: true
     name: app-network
-
-volumes:
-  minio_data:
-    name: minio-data
-  zk-data:
-    name: zookeeper-data
-  zk-logs:
-    name: zookeeper-logs
-  kafka-data:
-    name: kafka-data
