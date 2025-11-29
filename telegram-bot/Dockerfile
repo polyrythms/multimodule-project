@@ -9,7 +9,7 @@ COPY target/*.jar app.jar
 COPY src/main/resources/ /app/resources/
 
 # ⭐ ДОБАВЛЯЕМ: Копируем файлы миграций Liquibase
-COPY db/ /app/resources/db/
+COPY src/main/resources/db/ /app/resources/db/
 
 # Создаем папку логов
 RUN mkdir -p /app/logs && chmod 777 /app/logs
