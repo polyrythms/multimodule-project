@@ -1,4 +1,5 @@
 databaseChangeLog:
-  # Начальная структура
   - include:
       file: db/changelog/initial/001-initial-schema.yaml
+  - include:
+      file: db/changelog/initial/002-initial-data.yaml

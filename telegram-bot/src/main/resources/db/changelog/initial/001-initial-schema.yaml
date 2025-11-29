@@ -76,22 +76,6 @@ databaseChangeLog:
                   type: timestamp
                   defaultValueComputed: CURRENT_TIMESTAMP
 
-        - insert:
-            tableName: admin_users
-            columns:
-              - column:
-                  name: user_id
-                  value: 111111  # Замените на реальный ID владельца
-              - column:
-                  name: username
-                  value: "owner"
-              - column:
-                  name: role
-                  value: "OWNER"
-              - column:
-                  name: created_by
-                  value: 111111
-
         - createIndex:
             indexName: idx_admin_users_user_id
             tableName: admin_users
