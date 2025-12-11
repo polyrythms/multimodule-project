@@ -28,11 +28,18 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZK_HEAP_SIZE: 256M
+      ZK_MAX_HEAP_SIZE: 256M
+      ZK_LOG_LEVEL: ERROR
+      ZK_SNAP_RETAIN_COUNT: 3
+      ZK_PURGE_INTERVAL: 24
     volumes:
       - zk-data:/var/lib/zookeeper/data
       - zk-logs:/var/lib/zookeeper/log
     networks:
       - app-network
+    mem_limit: 512m
+    cpus: '0.5'
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
@@ -64,6 +71,14 @@ services:
       KAFKA_UNCLEAN_LEADER_ELEСTION_ENABLE: "false"
       KAFKA_MIN_INSYNC_REPLICAS: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+      KAFKA_JVM_PERFORMANCE_OPTS: "-server -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent -Djava.awt.headless=true"
+      KAFKA_LOG_SEGMENT_BYTES: 104857600
+      KAFKA_LOG_INDEX_SIZE_MAX_BYTES: 10485760
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+      KAFKA_NUM_REPLICA_FETCHERS: 1
     volumes:
       - kafka-data:/var/lib/kafka/data
       - ./kafka/topics.sh:/tmp/topics.sh
