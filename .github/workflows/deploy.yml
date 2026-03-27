@@ -91,36 +91,52 @@ jobs:
           script: |
             set -e
             cd /opt/multimodule-project
-            
-            echo "=== Creating network ==="
-            docker network create app-network 2>/dev/null || true
-            
+
+            echo "=== Checking infrastructure services ==="
+            # Проверяем и запускаем инфраструктуру только если она не запущена
+            if ! docker ps --format '{{.Names}}' | grep -q "postgres"; then
+              echo "Starting infrastructure services..."
+              docker compose -f docker-compose.yml up -d
+            else
+              echo "Infrastructure services already running"
+              docker compose -f docker-compose.yml ps
+            fi
+
             echo "=== Logging to GHCR ==="
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            echo "=== Pulling images for production ==="
-            # Сначала пуллим образы из GHCR (они указаны в prod.yml)
-            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml pull
-            
-            echo "=== Starting services ==="
-            # Запускаем с объединением обоих файлов
-            # prod.yml переопределяет build на image для telegram-bot и audio-service
-            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml up -d --remove-orphans
-            
+
+            echo "=== Pulling application images ==="
+            # Скачиваем только образы приложений
+            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml pull telegram-bot audio-service
+
+            echo "=== Restarting applications only ==="
+            # Перезапускаем только приложения, не трогая инфраструктуру
+            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml up -d --no-deps --force-recreate telegram-bot audio-service
+
             echo "=== Cleaning up old images ==="
             docker image prune -f
-            
+
             echo "=== Checking containers status ==="
             docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml ps
-            
-            echo "=== Waiting for services to start ==="
+
+            echo "=== Waiting for applications to start ==="
             sleep 30
-            
+
             echo "=== Health checks ==="
             echo "Testing audio service..."
-            curl -f http://localhost:8081/actuator/health && echo "✅ Audio service healthy" || echo "❌ Audio service health check failed"
-            
+            if curl -f http://localhost:8081/actuator/health; then
+              echo "✅ Audio service healthy"
+            else
+              echo "❌ Audio service health check failed"
+              exit 1
+            fi
+
             echo "Testing telegram bot..."
-            curl -f http://localhost:8082/actuator/health && echo "✅ Telegram bot healthy" || echo "❌ Telegram bot health check failed"
-            
-            echo "=== Deploy completed ==="
+            if curl -f http://localhost:8082/actuator/health; then
+              echo "✅ Telegram bot healthy"
+            else
+              echo "❌ Telegram bot health check failed"
+              exit 1
+            fi
+
+            echo "=== Deploy completed successfully ==="
