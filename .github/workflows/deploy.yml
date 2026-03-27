@@ -91,28 +91,36 @@ jobs:
           script: |
             set -e
             cd /opt/multimodule-project
-
-            # Создаем сеть если не существует
+            
+            echo "=== Creating network ==="
             docker network create app-network 2>/dev/null || true
-
-            # Логинимся в GitHub Container Registry
+            
+            echo "=== Logging to GHCR ==="
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # Скачиваем обновленные образы
-            docker compose -f docker-compose.apps.yml pull
-
-            # Перезапускаем приложения
-            docker compose -f docker-compose.apps.yml up -d --remove-orphans
-
-            # Очистка старых образов
+            
+            echo "=== Pulling images for production ==="
+            # Сначала пуллим образы из GHCR (они указаны в prod.yml)
+            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml pull
+            
+            echo "=== Starting services ==="
+            # Запускаем с объединением обоих файлов
+            # prod.yml переопределяет build на image для telegram-bot и audio-service
+            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml up -d --remove-orphans
+            
+            echo "=== Cleaning up old images ==="
             docker image prune -f
-
-            # Проверяем статус
-            echo "=== Application containers status ==="
-            docker compose -f docker-compose.apps.yml ps
-
-            # Проверяем здоровье
+            
+            echo "=== Checking containers status ==="
+            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml ps
+            
+            echo "=== Waiting for services to start ==="
             sleep 30
+            
             echo "=== Health checks ==="
+            echo "Testing audio service..."
             curl -f http://localhost:8081/actuator/health && echo "✅ Audio service healthy" || echo "❌ Audio service health check failed"
+            
+            echo "Testing telegram bot..."
             curl -f http://localhost:8082/actuator/health && echo "✅ Telegram bot healthy" || echo "❌ Telegram bot health check failed"
+            
+            echo "=== Deploy completed ==="
