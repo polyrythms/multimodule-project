@@ -2,7 +2,8 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, MM-refactor ]
+  workflow_dispatch:
   pull_request:
     branches: [ main ]
 
