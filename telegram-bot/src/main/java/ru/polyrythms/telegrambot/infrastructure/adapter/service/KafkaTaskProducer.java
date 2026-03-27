@@ -1,4 +1,3 @@
-// infrastructure/adapter/service/KafkaTaskProducer.java
 package ru.polyrythms.telegrambot.infrastructure.adapter.service;
 
 import lombok.RequiredArgsConstructor;

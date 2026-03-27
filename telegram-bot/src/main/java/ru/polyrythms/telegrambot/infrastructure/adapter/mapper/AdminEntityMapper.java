@@ -1,4 +1,3 @@
-// infrastructure/adapter/mapper/AdminEntityMapper.java
 package ru.polyrythms.telegrambot.infrastructure.adapter.mapper;
 
 import org.springframework.stereotype.Component;

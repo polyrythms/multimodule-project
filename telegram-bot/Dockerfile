@@ -1,23 +1,48 @@
-FROM amazoncorretto:21-alpine
-RUN apk add --no-cache curl
+# Stage 1: Builder
+FROM maven:3.9-amazoncorretto-21 AS builder
+
+WORKDIR /build
+
+# Копируем только pom.xml для кэширования зависимостей
+COPY pom.xml .
+COPY kafka-commons/pom.xml ./kafka-commons/pom.xml
+COPY telegram-bot/pom.xml ./telegram-bot/pom.xml
+COPY audio-service/pom.xml ./audio-service/pom.xml
+
+# Скачиваем зависимости
+RUN mvn dependency:go-offline -B
+
+# Копируем исходники
+COPY kafka-commons/src ./kafka-commons/src
+COPY telegram-bot/src ./telegram-bot/src
+
+# Сборка
+RUN mvn clean package -pl telegram-bot -am -DskipTests
+
+# Stage 2: Runtime
+FROM eclipse-temurin:21-jre-alpine
+
+# Безопасность: создаем пользователя и устанавливаем su-exec
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    apk add --no-cache curl su-exec
 
 WORKDIR /app
 
-# Копируем JAR файл
-COPY target/*.jar app.jar
+# Копируем JAR из builder
+COPY --from=builder /build/telegram-bot/target/*.jar app.jar
 
-# Копируем ресурсы
-COPY src/main/resources/ /app/resources/
+# Копируем общий entrypoint.sh
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# ⭐ ДОБАВЛЯЕМ: Копируем файлы миграций Liquibase
-COPY src/main/resources/db/ /app/resources/db/
+# Создаем папку для логов (будет пересоздана в entrypoint)
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
 
-# Создаем папку логов
-RUN mkdir -p /app/logs && chmod 777 /app/logs
-
-# Проверяем что файлы скопированы
-RUN find /app/resources -name "*.yaml" | head -10
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# Используем общий entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

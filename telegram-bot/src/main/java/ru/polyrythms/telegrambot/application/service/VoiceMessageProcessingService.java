@@ -1,4 +1,3 @@
-// application/service/VoiceMessageProcessingService.java
 package ru.polyrythms.telegrambot.application.service;
 
 import lombok.RequiredArgsConstructor;

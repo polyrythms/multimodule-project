@@ -1,4 +1,3 @@
-// infrastructure/adapter/service/TelegramFileDownloaderImpl.java
 package ru.polyrythms.telegrambot.infrastructure.adapter.service;
 
 import lombok.SneakyThrows;

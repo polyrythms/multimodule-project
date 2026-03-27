@@ -1,4 +1,3 @@
-// application/port/output/AudioStorage.java
 package ru.polyrythms.telegrambot.application.port.output;
 
 import java.io.File;

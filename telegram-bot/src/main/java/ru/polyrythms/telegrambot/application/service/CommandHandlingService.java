@@ -1,4 +1,3 @@
-// application/service/CommandHandlingService.java
 package ru.polyrythms.telegrambot.application.service;
 
 import lombok.RequiredArgsConstructor;
@@ -248,7 +247,6 @@ public class CommandHandlingService implements CommandHandlingUseCase {
     }
 
     private void handleGroupInfoCommand(Long chatId, Long userId) {
-        // В реальном приложении здесь нужно получить информацию о группе из контекста
         messageSender.sendMessage(chatId, "ℹ️ Эта команда временно недоступна");
     }
 

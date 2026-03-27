@@ -1,4 +1,3 @@
-// infrastructure/adapter/service/MinioAudioStorage.java
 package ru.polyrythms.telegrambot.infrastructure.adapter.service;
 
 import io.minio.MinioClient;

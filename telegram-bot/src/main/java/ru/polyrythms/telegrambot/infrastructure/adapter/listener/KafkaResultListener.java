@@ -1,4 +1,3 @@
-// infrastructure/adapter/listener/KafkaResultListener.java
 package ru.polyrythms.telegrambot.infrastructure.adapter.listener;
 
 import lombok.RequiredArgsConstructor;
