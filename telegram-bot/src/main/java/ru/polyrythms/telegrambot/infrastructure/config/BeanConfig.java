@@ -2,11 +2,13 @@ package ru.polyrythms.telegrambot.infrastructure.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 import ru.polyrythms.telegrambot.application.port.input.*;
 import ru.polyrythms.telegrambot.application.port.output.*;
 import ru.polyrythms.telegrambot.application.service.*;
 
 @Configuration
+@EnableAsync
 public class BeanConfig {
 
     @Bean
@@ -22,21 +24,6 @@ public class BeanConfig {
     }
 
     @Bean
-    public VoiceMessageProcessingUseCase voiceMessageProcessingUseCase(
-            GroupManagementUseCase groupManagementUseCase,
-            AudioStorage audioStorage,
-            TelegramFileDownloader fileDownloader,
-            DecryptionTaskProducer taskProducer,
-            MessageSender messageSender) {
-        return new VoiceMessageProcessingService(
-                groupManagementUseCase,
-                audioStorage,
-                fileDownloader,
-                taskProducer,
-                messageSender);
-    }
-
-    @Bean
     public CommandHandlingUseCase commandHandlingUseCase(
             AdminManagementUseCase adminManagementUseCase,
             GroupManagementUseCase groupManagementUseCase,
@@ -48,7 +35,8 @@ public class BeanConfig {
     }
 
     @Bean
-    public DecryptionResultHandlingUseCase decryptionResultHandlingUseCase(MessageSender messageSender) {
+    public DecryptionResultHandlingUseCase decryptionResultHandlingUseCase(
+            MessageSender messageSender) {
         return new DecryptionResultHandlingService(messageSender);
     }
 }
