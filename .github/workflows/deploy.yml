@@ -3,9 +3,17 @@ name: Build and Deploy
 on:
   push:
     branches: [ main, MM-refactor ]
+    paths-ignore: # 👈 Игнорировать документацию
+      - '**.md'
+      - 'docs/**'
+      - 'README.md'
+      - 'deploy.md'
   workflow_dispatch:
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 env:
   REGISTRY: ghcr.io
@@ -53,15 +61,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache-${{ matrix.service }}
-          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-${{ matrix.service }}-
-            ${{ runner.os }}-buildx-
-
       - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v5
         with:
@@ -71,8 +70,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.sha }}
-          cache-from: type=local,src=/tmp/.buildx-cache-${{ matrix.service }}
-          cache-to: type=local,dest=/tmp/.buildx-cache-${{ matrix.service }}-new,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build

@@ -42,7 +42,7 @@ RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-EXPOSE 8081
+EXPOSE 8080
 
 # Используем общий entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
