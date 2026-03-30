@@ -7,7 +7,8 @@ WORKDIR /build
 COPY pom.xml .
 COPY kafka-commons/pom.xml ./kafka-commons/pom.xml
 COPY telegram-bot/pom.xml ./telegram-bot/pom.xml
-COPY audio-service/pom.xml ./audio-service/pom.xml
+# COPY audio-service/pom.xml ./audio-service/pom.xml  # ЗАКОММЕНТИРОВАНО - если нет зависимости от audio-service
+# Если есть зависимость от audio-service, то эту строку нужно оставить, но закомментировать следующую
 
 # Скачиваем зависимости
 RUN mvn dependency:go-offline -B
@@ -15,6 +16,7 @@ RUN mvn dependency:go-offline -B
 # Копируем исходники
 COPY kafka-commons/src ./kafka-commons/src
 COPY telegram-bot/src ./telegram-bot/src
+# COPY audio-service/src ./audio-service/src  # ЗАКОММЕНТИРОВАНО - исходники audio-service не нужны для сборки telegram-bot
 
 # Сборка
 RUN mvn clean package -pl telegram-bot -am -DskipTests
