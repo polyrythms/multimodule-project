@@ -10,10 +10,10 @@ telegram:
   thread-pool:
     inbound:
       core-size: 0  # 0 = auto = количество ядер
-      queue-capacity: 50
+      queue-capacity: 1
     outbound:
       core-size: 0  # 0 = auto = количество ядер
-      queue-capacity: 100
+      queue-capacity: 1
 
 server:
   port: 8080
