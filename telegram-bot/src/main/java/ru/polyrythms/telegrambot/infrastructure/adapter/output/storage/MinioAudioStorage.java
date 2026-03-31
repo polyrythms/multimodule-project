@@ -1,4 +1,4 @@
-package ru.polyrythms.telegrambot.infrastructure.adapter.service;
+package ru.polyrythms.telegrambot.infrastructure.adapter.output.storage;
 
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;

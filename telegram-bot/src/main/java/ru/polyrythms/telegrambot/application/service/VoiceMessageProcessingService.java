@@ -9,7 +9,7 @@ import ru.polyrythms.telegrambot.application.port.input.VoiceMessageProcessingUs
 import ru.polyrythms.telegrambot.application.port.output.AudioStorage;
 import ru.polyrythms.telegrambot.application.port.output.DecryptionTaskProducer;
 import ru.polyrythms.telegrambot.application.port.output.MessageSender;
-import ru.polyrythms.telegrambot.application.port.output.TelegramFileDownloader;
+import ru.polyrythms.telegrambot.application.port.input.TelegramFileDownloader;
 import ru.polyrythms.telegrambot.domain.model.DecryptionTask;
 import ru.polyrythms.telegrambot.domain.model.VoiceMessage;
 
@@ -22,7 +22,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VoiceMessageProcessingService implements VoiceMessageProcessingUseCase {
 
-    private final GroupManagementUseCase groupManagementUseCase;
     private final AudioStorage audioStorage;
     private final TelegramFileDownloader fileDownloader;
     private final DecryptionTaskProducer taskProducer;

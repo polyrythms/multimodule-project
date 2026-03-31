@@ -1,4 +1,4 @@
-package ru.polyrythms.telegrambot.infrastructure.adapter.service;
+package ru.polyrythms.telegrambot.infrastructure.adapter.output.kafka;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
