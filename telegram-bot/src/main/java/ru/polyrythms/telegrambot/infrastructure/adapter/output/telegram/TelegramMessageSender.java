@@ -1,6 +1,5 @@
 package ru.polyrythms.telegrambot.infrastructure.adapter.output.telegram;
 
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

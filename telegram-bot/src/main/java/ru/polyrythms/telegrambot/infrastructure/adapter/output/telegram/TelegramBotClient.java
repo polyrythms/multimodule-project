@@ -1,6 +1,10 @@
 package ru.polyrythms.telegrambot.infrastructure.adapter.output.telegram;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.DefaultAbsSender;
 import org.telegram.telegrambots.bots.DefaultBotOptions;
@@ -13,62 +17,41 @@ import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.polyrythms.telegrambot.infrastructure.config.TelegramBotConfig;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import java.io.Serializable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Outbound Client для низкоуровневой коммуникации с Telegram API.
- *
+ * <p>
  * Ответственность:
  * 1. Низкоуровневая коммуникация с Telegram API
  * 2. Скачивание файлов
  * 3. Отправка сообщений (синхронно и асинхронно)
- * 4. Получение информации о боте (username, id)
- * 5. Управление пулом потоков для исходящих запросов
- *
- * Этот класс является технической инфраструктурой и не должен содержать
- * бизнес-логики. Он используется outbound адаптерами (MessageSender, FileDownloader).
- *
- * Аналог: RestTemplate, KafkaTemplate, MinioClient
+ * 4. Получение информации о боте
  */
 @Slf4j
 @Component
 public class TelegramBotClient {
 
     private final TelegramBotConfig config;
-    private final DefaultAbsSender bot;
     private final ExecutorService executorService;
+    @Getter
+    private final DefaultAbsSender bot;
+    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+
+    @Getter
     private String botUsername;
+    @Getter
     private Long botId;
 
-    public TelegramBotClient(TelegramBotConfig config) {
+    public TelegramBotClient(
+            TelegramBotConfig config,
+            @Qualifier("telegramOutboundExecutor") ExecutorService executorService) {
         this.config = config;
-
-        // Создаем ThreadFactory для исходящих запросов
-        ThreadFactory threadFactory = new ThreadFactory() {
-            private final AtomicLong threadNumber = new AtomicLong(1);
-
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread thread = new Thread(r);
-                thread.setName("telegram-client-" + threadNumber.getAndIncrement());
-                thread.setDaemon(true);
-                return thread;
-            }
-        };
-
-        // Пул для исходящих запросов (меньше, чем для входящих)
-        this.executorService = Executors.newFixedThreadPool(
-                Runtime.getRuntime().availableProcessors(),
-                threadFactory
-        );
+        this.executorService = executorService;
 
         // Инициализация клиента Telegram
         DefaultBotOptions options = new DefaultBotOptions();
@@ -81,6 +64,8 @@ public class TelegramBotClient {
                 return config.getBotToken();
             }
         };
+
+        log.info("TelegramBotClient initialized");
     }
 
     @PostConstruct
@@ -105,6 +90,10 @@ public class TelegramBotClient {
      * Получение информации о файле из Telegram
      */
     public File getTelegramFileInfo(String fileId) throws TelegramApiException {
+        if (isShuttingDown.get()) {
+            throw new IllegalStateException("Client is shutting down");
+        }
+
         GetFile getFile = new GetFile();
         getFile.setFileId(fileId);
         return bot.execute(getFile);
@@ -114,6 +103,10 @@ public class TelegramBotClient {
      * Скачивание файла по пути
      */
     public java.io.File downloadFileByPath(String filePath) throws TelegramApiException {
+        if (isShuttingDown.get()) {
+            throw new IllegalStateException("Client is shutting down");
+        }
+
         return bot.downloadFile(filePath);
     }
 
@@ -131,6 +124,10 @@ public class TelegramBotClient {
      * Синхронное выполнение метода Telegram API
      */
     public <T extends Serializable, M extends BotApiMethod<T>> T execute(M method) {
+        if (isShuttingDown.get()) {
+            throw new IllegalStateException("Client is shutting down, rejecting new requests");
+        }
+
         try {
             return bot.execute(method);
         } catch (TelegramApiException e) {
@@ -150,6 +147,12 @@ public class TelegramBotClient {
      * Асинхронная отправка сообщения
      */
     public CompletableFuture<Serializable> sendMessageAsync(SendMessage message) {
+        if (isShuttingDown.get()) {
+            CompletableFuture<Serializable> future = new CompletableFuture<>();
+            future.completeExceptionally(new IllegalStateException("Client is shutting down"));
+            return future;
+        }
+
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.debug("Sending message async to chatId: {}", message.getChatId());
@@ -165,6 +168,12 @@ public class TelegramBotClient {
      * Асинхронное выполнение любого метода
      */
     public CompletableFuture<Serializable> executeMethodAsync(BotApiMethod<?> method) {
+        if (isShuttingDown.get()) {
+            CompletableFuture<Serializable> future = new CompletableFuture<>();
+            future.completeExceptionally(new IllegalStateException("Client is shutting down"));
+            return future;
+        }
+
         return CompletableFuture.supplyAsync(() -> {
             try {
                 return bot.execute(method);
@@ -175,38 +184,34 @@ public class TelegramBotClient {
         }, executorService);
     }
 
-    // ========== GETTERS ==========
-
-    public String getBotUsername() {
-        return botUsername;
-    }
-
-    public Long getBotId() {
-        return botId;
-    }
-
-    public DefaultAbsSender getBot() {
-        return bot;
-    }
-
     // ========== SHUTDOWN ==========
 
     @PreDestroy
     public void destroy() {
         log.info("Shutting down TelegramBotClient...");
+        isShuttingDown.set(true);
+
         executorService.shutdown();
         try {
+            log.info("Waiting for pending tasks to complete (max 30 seconds)...");
             if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
                 log.warn("ExecutorService did not terminate gracefully, forcing shutdown...");
                 executorService.shutdownNow();
+
+                // Дополнительное ожидание для принудительного завершения
                 if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
-                    log.error("ExecutorService did not terminate");
+                    log.error("ExecutorService did not terminate even after forced shutdown");
                 }
             }
+
+            long completedTasks = executorService instanceof java.util.concurrent.ThreadPoolExecutor ?
+                    ((java.util.concurrent.ThreadPoolExecutor) executorService).getCompletedTaskCount() : 0;
+            log.info("TelegramBotClient shut down. Completed tasks: {}", completedTasks);
+
         } catch (InterruptedException e) {
+            log.warn("Shutdown interrupted", e);
             executorService.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        log.info("TelegramBotClient shut down");
     }
 }

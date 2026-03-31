@@ -3,69 +3,62 @@ package ru.polyrythms.telegrambot.infrastructure.adapter.input.telegram;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.GetMe;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.polyrythms.telegrambot.application.dto.TelegramUpdateDto;
 import ru.polyrythms.telegrambot.application.port.input.TelegramInboundPort;
+import ru.polyrythms.telegrambot.application.port.output.MessageSender;
 import ru.polyrythms.telegrambot.infrastructure.config.TelegramBotConfig;
+import ru.polyrythms.telegrambot.infrastructure.metrics.BotMetrics;
+import ru.polyrythms.telegrambot.infrastructure.task.VoiceMessageTask;
 
 import jakarta.annotation.PreDestroy;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Inbound Adapter для Telegram API.
- * Ответственность:
- * 1. Подключение к Telegram API через Long Polling
- * 2. Прием входящих Update
- * 3. Асинхронная диспетчеризация через пул потоков
- * 4. Конвертация Update → TelegramUpdateDto
- * 5. Вызов inbound порта
- * НЕ СОДЕРЖИТ:
- * - Бизнес-логики
- * - Логики маршрутизации команд/голоса
- * - Работы с файлами
- * Это "чистый" адаптер, который только преобразует внешние события
- * во внутренние DTO и передает их в приложение.
- */
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+
 @Slf4j
 @Component
 public class TelegramBotAdapter extends TelegramLongPollingBot {
 
     private final TelegramBotConfig config;
     private final TelegramInboundPort inboundPort;
+    private final MessageSender messageSender;
+    private final BotMetrics botMetrics;
     private final ExecutorService executorService;
-    private volatile Long botId;
+    private final Long botId;  // final поле
 
     public TelegramBotAdapter(
             TelegramBotConfig config,
-            TelegramInboundPort inboundPort) {
+            TelegramInboundPort inboundPort,
+            MessageSender messageSender,
+            BotMetrics botMetrics,
+            ExecutorService telegramInboundExecutor) {
         super(config.getBotToken());
         this.config = config;
         this.inboundPort = inboundPort;
+        this.messageSender = messageSender;
+        this.botMetrics = botMetrics;
+        this.executorService = telegramInboundExecutor;
 
-        // Создаем пул потоков для асинхронной обработки входящих сообщений
-        ThreadFactory threadFactory = new ThreadFactory() {
-            private final AtomicLong threadNumber = new AtomicLong(1);
+        // Инициализация ID бота при создании
+        this.botId = initializeBotId();
 
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread thread = new Thread(r);
-                thread.setName("telegram-adapter-" + threadNumber.getAndIncrement());
-                thread.setDaemon(true);
-                return thread;
-            }
-        };
+        log.info("TelegramBotAdapter initialized with botId: {}", botId);
+    }
 
-        this.executorService = Executors.newFixedThreadPool(
-                Runtime.getRuntime().availableProcessors() * 2,
-                threadFactory
-        );
-
-        log.info("TelegramBotAdapter initialized with pool size: {}",
-                Runtime.getRuntime().availableProcessors() * 2);
+    private Long initializeBotId() {
+        try {
+            var me = execute(new GetMe());
+            Long id = me.getId();
+            log.info("Bot ID obtained: {}", id);
+            return id;
+        } catch (TelegramApiException e) {
+            log.error("Failed to get bot ID", e);
+            return null;
+        }
     }
 
     @Override
@@ -79,66 +72,38 @@ public class TelegramBotAdapter extends TelegramLongPollingBot {
             return;
         }
 
-        // Получаем ID бота для проверки
-        Long botId = getBotId();
+        Long userId = update.getMessage().getFrom().getId();
 
-        // Игнорируем сообщения от самого бота
-        if (botId != null && update.getMessage().getFrom().getId().equals(botId)) {
-            log.debug("Ignoring message from self, botId: {}", botId);
+        // Самый безопасный способ
+        if (Objects.equals(userId, botId)) {
+            log.debug("Ignoring message from self");
             return;
         }
 
-        // Асинхронная обработка - не блокируем поток Telegram API
-        executorService.submit(() -> processUpdate(update));
-    }
+        // Создаем DTO
+        TelegramUpdateDto dto = TelegramUpdateDto.fromUpdate(update);
+        if (dto == null) {
+            log.warn("Could not create DTO from update");
+            return;
+        }
 
-    /**
-     * Обработка одного update в отдельном потоке
-     */
-    private void processUpdate(Update update) {
-        long startTime = System.currentTimeMillis();
+        // Создаем и отправляем задачу
+        VoiceMessageTask task = new VoiceMessageTask(
+                dto.getChatId(),
+                dto,
+                inboundPort,
+                messageSender
+        );
 
         try {
-            // Конвертируем Telegram Update в наш внутренний DTO
-            TelegramUpdateDto dto = TelegramUpdateDto.fromUpdate(update);
-
-            if (dto != null) {
-                // Вся бизнес-логика - в порте!
-                inboundPort.handleUpdate(dto);
-            }
-
+            executorService.execute(task);
+            botMetrics.recordTaskSubmitted();
         } catch (Exception e) {
-            log.error("Error processing update", e);
-        } finally {
-            long processingTime = System.currentTimeMillis() - startTime;
-            if (processingTime > 1000) {
-                log.warn("Slow processing: {} ms for update from user: {}",
-                        processingTime,
-                        update.hasMessage() ? update.getMessage().getFrom().getId() : "unknown");
-            }
+            log.error("Failed to submit task for chatId: {}", dto.getChatId(), e);
+            botMetrics.recordTaskRejected();
+            messageSender.sendMessageAsync(dto.getChatId(),
+                    "⚠️ *Сервер перегружен*\n\nПожалуйста, попробуйте позже.");
         }
-    }
-
-    /**
-     * Получение ID бота с кэшированием.
-     * Получаем динамически через API, а не из проперти.
-     */
-    private Long getBotId() {
-        if (botId == null) {
-            synchronized (this) {
-                if (botId == null) {
-                    try {
-                        var me = execute(new org.telegram.telegrambots.meta.api.methods.GetMe());
-                        botId = me.getId();
-                        log.info("Bot ID obtained dynamically: {}", botId);
-                    } catch (Exception e) {
-                        log.error("Failed to get bot ID", e);
-                        return null;
-                    }
-                }
-            }
-        }
-        return botId;
     }
 
     @PreDestroy
@@ -148,11 +113,8 @@ public class TelegramBotAdapter extends TelegramLongPollingBot {
         executorService.shutdown();
         try {
             if (!executorService.awaitTermination(30, TimeUnit.SECONDS)) {
-                log.warn("ExecutorService did not terminate gracefully, forcing shutdown...");
+                log.warn("Forcing shutdown after timeout");
                 executorService.shutdownNow();
-                if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
-                    log.error("ExecutorService did not terminate");
-                }
             }
         } catch (InterruptedException e) {
             executorService.shutdownNow();
