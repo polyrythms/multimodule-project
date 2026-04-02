@@ -1,4 +1,3 @@
-// domain/model/TelegramGroupEntity.java
 package ru.polyrythms.telegrambot.domain.model;
 
 import lombok.Builder;

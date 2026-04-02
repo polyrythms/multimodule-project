@@ -1,4 +1,4 @@
-package ru.polyrythms.telegrambot.application.port.output;
+package ru.polyrythms.telegrambot.application.port.input;
 
 import java.io.File;
 

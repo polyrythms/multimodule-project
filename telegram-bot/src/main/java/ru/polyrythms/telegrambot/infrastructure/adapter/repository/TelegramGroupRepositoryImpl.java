@@ -1,4 +1,3 @@
-// infrastructure/adapter/repository/TelegramGroupRepositoryImpl.java
 package ru.polyrythms.telegrambot.infrastructure.adapter.repository;
 
 import lombok.RequiredArgsConstructor;

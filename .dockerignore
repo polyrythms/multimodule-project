@@ -1,0 +1,54 @@
+# Git
+.git/
+.gitignore
+
+# Maven
+*/target/
+*/target/*
+*/*.jar
+*/*.war
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+
+# IDE
+*/.idea/
+*/.idea/*
+*/*.iml
+*/.vscode/
+*/.vscode/*
+*.classpath
+*.project
+
+# Logs
+*/logs/
+*.log
+*/log/
+
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+*.tar.gz
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Project specific
+README.md
+LICENSE
+*.md
+docs/
+.github/actions/
+.github/workflows/
+.ci/
+
+# Temporary files
+*/.DS_Store
+*/*.tmp
+*/*.swp
+*/*.bak
+*.hprof
+*.dump

@@ -1,4 +1,3 @@
-// application/port/input/GroupManagementUseCase.java
 package ru.polyrythms.telegrambot.application.port.input;
 
 import ru.polyrythms.telegrambot.domain.model.TelegramGroup;

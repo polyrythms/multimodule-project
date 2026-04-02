@@ -1,4 +1,4 @@
-// application/dto/TelegramGroupDto.java
+
 package ru.polyrythms.telegrambot.application.dto;
 
 import lombok.Builder;

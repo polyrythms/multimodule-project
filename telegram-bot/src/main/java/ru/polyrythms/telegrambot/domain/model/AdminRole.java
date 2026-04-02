@@ -1,4 +1,3 @@
-// domain/model/AdminRole.java
 package ru.polyrythms.telegrambot.domain.model;
 
 public enum AdminRole {
