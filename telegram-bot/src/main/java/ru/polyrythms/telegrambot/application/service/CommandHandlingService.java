@@ -2,6 +2,7 @@ package ru.polyrythms.telegrambot.application.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import ru.polyrythms.telegrambot.application.dto.AdminUserDto;
 import ru.polyrythms.telegrambot.application.dto.TelegramGroupDto;
 import ru.polyrythms.telegrambot.application.port.input.AdminManagementUseCase;
@@ -30,6 +31,9 @@ public class CommandHandlingService implements CommandHandlingUseCase {
     private static final Pattern ADD_GROUP_PATTERN = Pattern.compile("/addgroup\\s+(-?\\d+)\\s+(.+)");
     private static final Pattern REMOVE_GROUP_PATTERN = Pattern.compile("/(removegroup|deactivategroup)\\s+(-?\\d+)");
     private static final Pattern ACTIVATE_GROUP_PATTERN = Pattern.compile("/activategroup\\s+(-?\\d+)");
+
+    @Value("${weather.webapp.url}")
+    private String weatherWebAppUrl;
 
     @Override
     public void handleCommand(Long chatId, Long userId, String command, String[] args, String fullText) {
@@ -312,6 +316,41 @@ public class CommandHandlingService implements CommandHandlingUseCase {
             messageSender.sendMessage(chatId, "ℹ️ Вы не являетесь администратором");
         }
     }
+
+
+
+//    private void handleWeatherCommand(Long chatId, Long userId, String[] args) {
+//        // Проверка группы
+//        if (!groupManagementUseCase.isGroupAllowed(chatId)) {
+//            messageSender.sendMessage(chatId, "❌ Эта группа не активирована для прогноза погоды.");
+//            return;
+//        }
+//
+//        // Генерация JWT токена
+//        String token = jwtTokenProvider.generateToken(userId, chatId,
+//                adminService.isAdmin(userId) ? "admin" : "member");
+//
+//        // URL Web App на GitHub Pages с токеном
+//        String webAppUrl = weatherWebAppUrl + "/?token=" + token;
+//
+//        // Создаем кнопку
+//        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+//        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+//
+//        InlineKeyboardButton button = new InlineKeyboardButton();
+//        button.setText("🌤 Открыть прогноз погоды");
+//        button.setWebApp(new WebAppInfo(webAppUrl));
+//
+//        buttons.add(List.of(button));
+//        markup.setKeyboard(buttons);
+//
+//        SendMessage message = new SendMessage();
+//        message.setChatId(chatId.toString());
+//        message.setText("🌤 Прогноз погоды для вашей группы");
+//        message.setReplyMarkup(markup);
+//
+//        messageSender.sendMessage(message);
+//    }
 
     private Long parseUserId(String input) {
         if (input.startsWith("@")) {

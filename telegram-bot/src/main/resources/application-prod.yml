@@ -21,6 +21,31 @@ telegram:
     username: ${TELEGRAM_BOT_USERNAME}
     token: ${TELEGRAM_BOT_TOKEN}
 
+
+weather:
+  webapp:
+    url: ${WEATHER_WEBAPP_URL}
+
+# Настройки для разделения портов
+server:
+  port: 8080
+  address: 0.0.0.0
+
+management:
+  server:
+    port: 8081
+    address: 0.0.0.0
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+
 logging:
   level:
     root: WARN
