@@ -77,7 +77,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
@@ -91,55 +91,86 @@ jobs:
           script: |
             cd /opt/multimodule-project
             
-            # ✅ ДОБАВЛЯЕМ git pull для обновления конфигов и кода
-            echo "🔄 Updating repository..."
-            git pull origin main
-            
-            # ✅ Обновляем nginx.conf если изменился
-            echo "📁 Checking nginx configuration..."
-            if [ -f nginx/nginx.conf ]; then
-              docker exec nginx nginx -t 2>/dev/null || echo "⚠️ Nginx config check skipped (container not running)"
+            # ============================================
+            # 1. ИНИЦИАЛИЗАЦИЯ GIT (если нет)
+            # ============================================
+            if [ ! -d .git ]; then
+              echo "📁 Initializing git repository..."
+              git init
+              git remote add origin https://github.com/polyrythms/multimodule-project.git
+              git fetch origin
+              git reset --hard origin/main
+            else
+              echo "🔄 Updating repository..."
+              git fetch origin
+              git reset --hard origin/main
             fi
             
-            # Pull latest images
+            # ============================================
+            # 2. ЛОГИН В GHCR
+            # ============================================
+            echo "🔐 Logging into GitHub Container Registry..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # ============================================
+            # 3. ПОДГОТОВКА ДИРЕКТОРИЙ
+            # ============================================
+            echo "📁 Creating directories..."
+            mkdir -p nginx/ssl logs/telegram-bot logs/audio-service
+            
+            # ============================================
+            # 4. PULL ОБРАЗОВ
+            # ============================================
             echo "🐳 Pulling latest images..."
             docker compose -f docker-compose.prod.yml pull
             
-            # Create necessary directories
-            mkdir -p nginx/ssl logs/telegram-bot logs/audio-service
-            
-            # Generate self-signed SSL certificate for testing (replace with Let's Encrypt in production)
-            if [ ! -f nginx/ssl/nginx.crt ]; then
-              echo "🔐 Generating SSL certificate..."
-              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                -keyout nginx/ssl/nginx.key \
-                -out nginx/ssl/nginx.crt \
-                -subj "/CN=polyrythms.ru"
-            fi
-            
-            # Stop old containers
+            # ============================================
+            # 5. ОСТАНОВКА СТАРЫХ КОНТЕЙНЕРОВ
+            # ============================================
             echo "🛑 Stopping old containers..."
-            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
+            docker compose -f docker-compose.apps.yml down 2>/dev/null || true
+            docker compose -f docker-compose-monitoring.yml down 2>/dev/null || true
             
-            # Start services with updated configs
+            # ============================================
+            # 6. ЗАПУСК СЕРВИСОВ
+            # ============================================
             echo "🚀 Starting services..."
             docker compose -f docker-compose.yml up -d minio zookeeper kafka kafdrop
             docker compose -f docker-compose.apps.yml up -d telegram-bot audio-service
             docker compose -f docker-compose.prod.yml up -d nginx
-            docker compose -f docker-compose-monitoring.yml up -d
+            docker compose -f docker-compose-monitoring.yml up -d prometheus 2>/dev/null || true
             
-            # Wait for services to be healthy
-            sleep 30
+            # ============================================
+            # 7. ПРОВЕРКА СТАТУСА
+            # ============================================
+            echo "⏳ Waiting for services to be ready..."
+            sleep 15
             
-            # Check service health
             echo "📊 Service status:"
             docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
             
-            # Test nginx configuration
-            echo "🔍 Testing nginx..."
-            docker exec nginx nginx -t
+            # Проверка Nginx
+            if docker ps | grep -q nginx; then
+              echo "🔍 Testing nginx configuration..."
+              docker exec nginx nginx -t
+              echo "✅ Nginx is running"
+            else
+              echo "❌ Nginx is not running. Checking logs..."
+              docker compose -f docker-compose.prod.yml logs nginx --tail 20
+            fi
             
-            # Clean up old images
+            # Проверка бота
+            if docker ps | grep -q telegram-bot; then
+              echo "✅ Telegram bot is running"
+            else
+              echo "❌ Telegram bot is not running. Checking logs..."
+              docker compose -f docker-compose.apps.yml logs telegram-bot --tail 20
+            fi
+            
+            # ============================================
+            # 8. ОЧИСТКА
+            # ============================================
             echo "🧹 Cleaning up old images..."
             docker image prune -f
             
