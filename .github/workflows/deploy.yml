@@ -90,18 +90,25 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/multimodule-project
+      
+            # 🔧 ФИКС: Сбрасываем права перед git операциями
+            echo "🔧 Fixing permissions..."
+            chown -R root:root . 2>/dev/null || true
+            git config --global --add safe.directory /opt/multimodule-project
             
-            # ============================================
-            # 1. ИНИЦИАЛИЗАЦИЯ GIT (если нет)
-            # ============================================
+            # 1. ИНИЦИАЛИЗАЦИЯ GIT
             if [ ! -d .git ]; then
               echo "📁 Initializing git repository..."
+              rm -rf .git 2>/dev/null || true
               git init
               git remote add origin https://github.com/polyrythms/multimodule-project.git
               git fetch origin
               git reset --hard origin/main
             else
               echo "🔄 Updating repository..."
+              # Удаляем проблемные файлы
+              git clean -fd
+              git reset --hard HEAD
               git fetch origin
               git reset --hard origin/main
             fi
