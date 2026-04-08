@@ -2,54 +2,47 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main, MM-refactor ]
-    paths-ignore: # 👈 Игнорировать документацию
-      - '**.md'
-      - 'docs/**'
-      - 'README.md'
-      - 'deploy.md'
-  workflow_dispatch:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
+  IMAGE_NAME_TELEGRAM_BOT: ${{ github.repository }}/telegram-bot
+  IMAGE_NAME_AUDIO_SERVICE: ${{ github.repository }}/audio-service
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: 'maven'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
 
       - name: Run tests
         run: mvn clean test
 
-  build:
+  build-and-push:
     needs: test
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        service: [telegram-bot, audio-service]
-      fail-fast: false
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -61,129 +54,93 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.service }}
+      - name: Build and push Telegram Bot
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./${{ matrix.service }}/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.sha }}
+          file: ./telegram-bot/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Audio Service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./audio-service/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    needs: build
+    needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/MM-refactor'
-    environment: production
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main')
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Deploy to server
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          command_timeout: 30m
           script: |
-            set -e
             cd /opt/multimodule-project
-
-            echo "=== Checking infrastructure services ==="
-            # Проверяем и запускаем инфраструктуру только если она не запущена
-            if ! docker ps --format '{{.Names}}' | grep -q "postgres"; then
-              echo "Starting infrastructure services..."
-              docker compose -f docker-compose.yml up -d
-            else
-              echo "Infrastructure services already running"
-              docker compose -f docker-compose.yml ps
+            
+            # ✅ ДОБАВЛЯЕМ git pull для обновления конфигов и кода
+            echo "🔄 Updating repository..."
+            git pull origin main
+            
+            # ✅ Обновляем nginx.conf если изменился
+            echo "📁 Checking nginx configuration..."
+            if [ -f nginx/nginx.conf ]; then
+              docker exec nginx nginx -t 2>/dev/null || echo "⚠️ Nginx config check skipped (container not running)"
             fi
-
-            echo "=== Logging to GHCR ==="
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            echo "=== Pulling application images ==="
-            # Скачиваем только образы приложений
-            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml pull telegram-bot audio-service
-
-            echo "=== Restarting applications only ==="
-            # Перезапускаем только приложения, не трогая инфраструктуру
-            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml up -d --no-deps --force-recreate telegram-bot audio-service
-
-            echo "=== Cleaning up old images ==="
+            
+            # Pull latest images
+            echo "🐳 Pulling latest images..."
+            docker compose -f docker-compose.prod.yml pull
+            
+            # Create necessary directories
+            mkdir -p nginx/ssl logs/telegram-bot logs/audio-service
+            
+            # Generate self-signed SSL certificate for testing (replace with Let's Encrypt in production)
+            if [ ! -f nginx/ssl/nginx.crt ]; then
+              echo "🔐 Generating SSL certificate..."
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout nginx/ssl/nginx.key \
+                -out nginx/ssl/nginx.crt \
+                -subj "/CN=polyrythms.ru"
+            fi
+            
+            # Stop old containers
+            echo "🛑 Stopping old containers..."
+            docker compose -f docker-compose.prod.yml down
+            
+            # Start services with updated configs
+            echo "🚀 Starting services..."
+            docker compose -f docker-compose.yml up -d minio zookeeper kafka kafdrop
+            docker compose -f docker-compose.apps.yml up -d telegram-bot audio-service
+            docker compose -f docker-compose.prod.yml up -d nginx
+            docker compose -f docker-compose-monitoring.yml up -d
+            
+            # Wait for services to be healthy
+            sleep 30
+            
+            # Check service health
+            echo "📊 Service status:"
+            docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
+            
+            # Test nginx configuration
+            echo "🔍 Testing nginx..."
+            docker exec nginx nginx -t
+            
+            # Clean up old images
+            echo "🧹 Cleaning up old images..."
             docker image prune -f
-
-            echo "=== Checking containers status ==="
-            docker compose -f docker-compose.apps.yml -f docker-compose.prod.yml ps
-
-            # ============================================
-            # БЛОК 1: ДИНАМИЧЕСКОЕ ОЖИДАНИЕ (ПУНКТ 4)
-            # ============================================
-            echo "=== Waiting for applications to be ready (max 90 seconds) ==="
-            max_wait=90
-            waited=0
-
-            # Функция проверки здоровья
-            check_health() {
-              local service=$1
-              local url=$2
-              curl -sf "$url" > /dev/null 2>&1
-            }
-
-            while [ $waited -lt $max_wait ]; do
-              if check_health "audio" "http://localhost:8081/actuator/health" && \
-                 check_health "telegram" "http://localhost:8082/actuator/health"; then
-                echo "✅ Both services are healthy after ${waited}s"
-                break
-              fi
-
-              # Показываем прогресс
-              echo "⏳ Waiting... ($waited/${max_wait}s)"
-              sleep 5
-              waited=$((waited+5))
-            done
-
-            if [ $waited -ge $max_wait ]; then
-              echo "❌ Services failed to become healthy within ${max_wait}s"
-              # БЛОК 2: ВЫВОД ЛОГОВ ПРИ ОШИБКЕ (ПУНКТ 3)
-              echo ""
-              echo "=== Audio service logs (last 50 lines) ==="
-              docker logs multimodule-project-audio-service-1 --tail 50 || echo "Cannot get audio service logs"
-              echo ""
-              echo "=== Telegram bot logs (last 50 lines) ==="
-              docker logs multimodule-project-telegram-bot-1 --tail 50 || echo "Cannot get telegram bot logs"
-              echo ""
-              echo "=== Container status ==="
-              docker ps -a | grep multimodule-project
-              exit 1
-            fi
-
-            # ============================================
-            # БЛОК 3: ФИНАЛЬНАЯ ПРОВЕРКА (ПУНКТ 3)
-            # ============================================
-            echo "=== Final health verification ==="
-
-            echo "Testing audio service..."
-            if curl -f http://localhost:8081/actuator/health; then
-              echo "✅ Audio service healthy"
-            else
-              echo "❌ Audio service health check failed"
-              # Выводим логи даже при финальной проверке
-              echo "=== Audio service logs ==="
-              docker logs multimodule-project-audio-service-1 --tail 50
-              exit 1
-            fi
-
-            echo "Testing telegram bot..."
-            if curl -f http://localhost:8082/actuator/health; then
-              echo "✅ Telegram bot healthy"
-            else
-              echo "❌ Telegram bot health check failed"
-              echo "=== Telegram bot logs ==="
-              docker logs multimodule-project-telegram-bot-1 --tail 50
-              exit 1
-            fi
-
-            echo "=== Deploy completed successfully ==="
+            
+            echo "✅ Deployment completed successfully!"

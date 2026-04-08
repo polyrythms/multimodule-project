@@ -1,4 +1,6 @@
 services:
+  # Nginx УБРАН - будет только в docker-compose.prod.yml
+
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -6,16 +8,13 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    expose:
+      - "9000"
+      - "9001"
     volumes:
       - minio_data:/data
     networks:
-      app-network:
-        aliases:
-          - minio
-          - minio-service
+      - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -56,9 +55,9 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -81,9 +80,8 @@ services:
       KAFKA_NUM_REPLICA_FETCHERS: 1
     volumes:
       - kafka-data:/var/lib/kafka/data
-      - ./kafka/topics.sh:/tmp/topics.sh
-    ports:
-      - "9092:9092"
+    expose:
+      - "29092"
     networks:
       - app-network
     healthcheck:
@@ -103,15 +101,11 @@ services:
       KAFKA_BROKER_CONNECT: kafka:29092
       JVM_OPTS: "-Xms32M -Xmx64M"
       SERVER_SERVLET_CONTEXT_PATH: "/"
-    ports:
-      - "19000:9000"
+    expose:
+      - "9000"
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    restart: unless-stopped
 
 networks:
   app-network:

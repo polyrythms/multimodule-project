@@ -201,3 +201,49 @@ netstat -tlnp | grep -E "8081|8082|9000|9092"
 3. Выбрать workflow **Build and Deploy**
 4. Нажать на конкретный запуск
 5. Просмотреть логи каждой job
+
+
+## Безопасность и сетевая архитектура
+
+### Новая сетевая архитектура
+
+После внедрения Nginx как единой точки входа:
+
+**Внешние порты (открыты на хосте):**
+- `80` (HTTP) - перенаправляет на HTTPS
+- `443` (HTTPS) - единственная точка входа
+
+**Внутренние сервисы (только внутри Docker сети):**
+- telegram-bot:8080 (приложение), 8081 (метрики)
+- audio-service:8080 (приложение), 8081 (метрики)
+- minio:9000 (API), 9001 (console)
+- kafka:29092
+- prometheus:9090
+- grafana:3000
+
+### Доступ к сервисам
+
+**Извне (через Nginx):**
+- Web App: `https://polyrythms.ru/app/`
+- Bot API: `https://polyrythms.ru/api/bot/`
+- Metrics (ограничен по IP): `https://polyrythms.ru/metrics`
+
+**Изнутри (между сервисами):**
+- Используйте имена сервисов в Docker сети:
+    - `http://telegram-bot:8080`
+    - `http://audio-service:8080`
+    - `http://minio:9000`
+    - `kafka:29092`
+
+### Проверка безопасности
+
+```bash
+# Проверить открытые порты (должны быть только 80 и 443)
+sudo ss -tlnp | grep -E ":(80|443)"
+
+# Проверить, что внутренние порты не доступны извне
+curl -I http://your-server.com:8082  # Должен быть timeout/refused
+curl -I https://your-server.com:9092  # Должен быть timeout/refused
+
+# Проверить доступ через Nginx
+curl -I https://your-server.com/health

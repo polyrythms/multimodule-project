@@ -19,6 +19,10 @@ telegram:
     username: ${TELEGRAM_BOT_USERNAME}
     token: ${TELEGRAM_BOT_TOKEN}
 
+weather:
+  webapp:
+    url: ${WEATHER_WEBAPP_URL}
+
 logging:
   level:
     root: INFO
