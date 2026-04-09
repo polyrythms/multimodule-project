@@ -1,0 +1,90 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    sendfile on;
+    keepalive_timeout 65;
+    client_max_body_size 50M;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_origin"';
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+
+    map $http_origin $cors_origin {
+        default "";
+        "https://polyrythms.github.io" "$http_origin";
+        "https://polyrythms.github.io/weather-report" "$http_origin";
+        "http://localhost:3000" "$http_origin";
+        "http://localhost:8080" "$http_origin";
+    }
+
+    server {
+        listen 80;
+        listen [::]:80;
+        server_name ${DOMAIN};
+        
+        location / {
+            return 301 https://$host$request_uri;
+        }
+        
+        location ^~ /.well-known/acme-challenge/ {
+            root /var/www/html;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+        http2 on;
+        server_name ${DOMAIN};
+
+        ssl_certificate /etc/nginx/ssl/nginx.crt;
+        ssl_certificate_key /etc/nginx/ssl/nginx.key;
+        ssl_session_timeout 1d;
+        ssl_session_cache shared:SSL:50m;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
+        add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+
+        location / {
+            if ($request_method = 'OPTIONS') {
+                add_header 'Access-Control-Allow-Origin' $cors_origin;
+                add_header 'Access-Control-Allow-Credentials' 'true';
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
+                add_header 'Access-Control-Max-Age' 1728000;
+                add_header 'Content-Length' 0;
+                return 204;
+            }
+            return 404;
+        }
+
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        location /api/ {
+            return 404 '{"error":"API not implemented yet"}';
+            add_header Content-Type application/json;
+        }
+
+        location /metrics {
+            allow 127.0.0.1;
+            deny all;
+            return 404;
+        }
+    }
+}
