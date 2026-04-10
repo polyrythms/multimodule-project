@@ -32,7 +32,7 @@ services:
       MANAGEMENT_SERVER_PORT: 8081
       # Добавляем URL для Web App
       WEATHER_WEBAPP_URL: "https://polyrythms.github.io/weather-report"
-      SERVER_IP: ${SERVER_IP}
+      SERVER_IP: ${SERVER_HOST}
     volumes:
       - ./logs/telegram-bot:/app/logs
     networks:
