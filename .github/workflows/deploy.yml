@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/nginx-security ]
   pull_request:
     branches: [ main ]
 
@@ -16,20 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
-
-      - name: Cache Maven dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
-
       - name: Run tests
         run: mvn clean test
 
@@ -40,37 +31,36 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push Telegram Bot
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./telegram-bot/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./audio-service/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -78,11 +68,45 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to server
+      - name: Generate nginx.conf from template
+        run: |
+          export DOMAIN="${{ secrets.DOMAIN }}"
+          envsubst '${DOMAIN}' < nginx/nginx.conf.template > nginx/nginx.conf
+          echo "✅ nginx.conf generated"
+
+      - name: Create .env file from secrets
+        run: |
+          cat > .env << 'EOF'
+          SERVER_IP=${{ secrets.SERVER_IP }}
+          DOMAIN=${{ secrets.DOMAIN }}
+          MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
+          MINIO_BUCKET=${{ secrets.MINIO_BUCKET }}
+          KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
+          TELEGRAM_BOT_USERNAME=${{ secrets.TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ASSEMBLYAI_API_KEY=${{ secrets.ASSEMBLYAI_API_KEY }}
+          WEATHER_WEBAPP_URL=${{ secrets.WEATHER_WEBAPP_URL }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          EOF
+          echo "✅ .env file created"
+
+      - name: Copy files to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml,docker-compose.apps.yml,docker-compose.prod.yml,nginx/nginx.conf,.env"
+          target: "/opt/multimodule-project/"
+          strip_components: 0
+          overwrite: true
+
+      - name: Set permissions on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -90,95 +114,33 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/multimodule-project
-      
-            # 🔧 ФИКС: Сбрасываем права перед git операциями
-            echo "🔧 Fixing permissions..."
-            chown -R root:root . 2>/dev/null || true
-            git config --global --add safe.directory /opt/multimodule-project
+            chmod 600 .env
+            echo "✅ .env permissions set (600)"
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/multimodule-project
             
-            # 1. ИНИЦИАЛИЗАЦИЯ GIT
-            if [ ! -d .git ]; then
-              echo "📁 Initializing git repository..."
-              rm -rf .git 2>/dev/null || true
-              git init
-              git remote add origin https://github.com/polyrythms/multimodule-project.git
-              git fetch origin
-              git reset --hard origin/main
-            else
-              echo "🔄 Updating repository..."
-              # Удаляем проблемные файлы
-              git clean -fd
-              git reset --hard HEAD
-              git fetch origin
-              git reset --hard origin/main
-            fi
-            
-            # ============================================
-            # 2. ЛОГИН В GHCR
-            # ============================================
-            echo "🔐 Logging into GitHub Container Registry..."
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # ============================================
-            # 3. ПОДГОТОВКА ДИРЕКТОРИЙ
-            # ============================================
-            echo "📁 Creating directories..."
-            mkdir -p nginx/ssl logs/telegram-bot logs/audio-service
-            
-            # ============================================
-            # 4. PULL ОБРАЗОВ
-            # ============================================
             echo "🐳 Pulling latest images..."
+            docker compose -f docker-compose.yml pull
+            docker compose -f docker-compose.apps.yml pull
             docker compose -f docker-compose.prod.yml pull
             
-            # ============================================
-            # 5. ОСТАНОВКА СТАРЫХ КОНТЕЙНЕРОВ
-            # ============================================
             echo "🛑 Stopping old containers..."
             docker compose -f docker-compose.prod.yml down 2>/dev/null || true
             docker compose -f docker-compose.apps.yml down 2>/dev/null || true
-            docker compose -f docker-compose-monitoring.yml down 2>/dev/null || true
             
-            # ============================================
-            # 6. ЗАПУСК СЕРВИСОВ
-            # ============================================
             echo "🚀 Starting services..."
-            docker compose -f docker-compose.yml up -d minio zookeeper kafka kafdrop
-            docker compose -f docker-compose.apps.yml up -d telegram-bot audio-service
-            docker compose -f docker-compose.prod.yml up -d nginx
-            docker compose -f docker-compose-monitoring.yml up -d prometheus 2>/dev/null || true
+            docker compose -f docker-compose.yml up -d
+            docker compose -f docker-compose.apps.yml up -d
+            docker compose -f docker-compose.prod.yml up -d
             
-            # ============================================
-            # 7. ПРОВЕРКА СТАТУСА
-            # ============================================
-            echo "⏳ Waiting for services to be ready..."
-            sleep 15
-            
-            echo "📊 Service status:"
-            docker ps --filter "status=running" --format "table {{.Names}}\t{{.Status}}"
-            
-            # Проверка Nginx
-            if docker ps | grep -q nginx; then
-              echo "🔍 Testing nginx configuration..."
-              docker exec nginx nginx -t
-              echo "✅ Nginx is running"
-            else
-              echo "❌ Nginx is not running. Checking logs..."
-              docker compose -f docker-compose.prod.yml logs nginx --tail 20
-            fi
-            
-            # Проверка бота
-            if docker ps | grep -q telegram-bot; then
-              echo "✅ Telegram bot is running"
-            else
-              echo "❌ Telegram bot is not running. Checking logs..."
-              docker compose -f docker-compose.apps.yml logs telegram-bot --tail 20
-            fi
-            
-            # ============================================
-            # 8. ОЧИСТКА
-            # ============================================
             echo "🧹 Cleaning up old images..."
             docker image prune -f
             
-            echo "✅ Deployment completed successfully!"
+            echo "✅ Deployment completed!"
