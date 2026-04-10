@@ -80,7 +80,7 @@ jobs:
       - name: Create .env file from secrets
         run: |
           cat > .env << 'EOF'
-          SERVER_IP=${{ secrets.SERVER_IP }}
+          SERVER_HOST=${{ secrets.SERVER_HOST }}
           DOMAIN=${{ secrets.DOMAIN }}
           MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
           MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
@@ -88,6 +88,7 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
           TELEGRAM_BOT_USERNAME=${{ secrets.TELEGRAM_BOT_USERNAME }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_USER_ID=${{ secrets.TELEGRAM_ADMIN_USER_ID }}
           ASSEMBLYAI_API_KEY=${{ secrets.ASSEMBLYAI_API_KEY }}
           WEATHER_WEBAPP_URL=${{ secrets.WEATHER_WEBAPP_URL }}
           JWT_SECRET=${{ secrets.JWT_SECRET }}
