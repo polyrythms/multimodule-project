@@ -133,8 +133,8 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
             
             echo "🛑 Stopping old containers..."
-            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
-            docker compose -f docker-compose.apps.yml down 2>/dev/null || true
+            docker compose -f docker-compose.prod.yml down --volumes 2>/dev/null || true
+            docker compose -f docker-compose.apps.yml down --volumes 2>/dev/null || true
             
             echo "🚀 Starting services..."
             docker compose -f docker-compose.yml up -d
