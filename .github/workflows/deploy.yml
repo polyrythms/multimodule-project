@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/nginx-security ]
   pull_request:
     branches: [ main ]
 
@@ -47,14 +47,22 @@ jobs:
           context: .
           file: ./telegram-bot/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./audio-service/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build-and-push
@@ -62,7 +70,54 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy to server
+
+      - name: Generate nginx.conf from template
+        run: |
+          export DOMAIN="${{ secrets.DOMAIN }}"
+          envsubst '${DOMAIN}' < nginx/nginx.conf.template > nginx/nginx.conf
+          echo "✅ nginx.conf generated"
+
+      - name: Create .env file from secrets
+        run: |
+          cat > .env << 'EOF'
+          SERVER_IP=${{ secrets.SERVER_IP }}
+          DOMAIN=${{ secrets.DOMAIN }}
+          MINIO_ROOT_USER=${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD=${{ secrets.MINIO_ROOT_PASSWORD }}
+          MINIO_BUCKET=${{ secrets.MINIO_BUCKET }}
+          KAFKA_BOOTSTRAP_SERVERS=${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
+          TELEGRAM_BOT_USERNAME=${{ secrets.TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ASSEMBLYAI_API_KEY=${{ secrets.ASSEMBLYAI_API_KEY }}
+          WEATHER_WEBAPP_URL=${{ secrets.WEATHER_WEBAPP_URL }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          EOF
+          echo "✅ .env file created"
+
+      - name: Copy files to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml,docker-compose.apps.yml,docker-compose.prod.yml,nginx/nginx.conf,.env"
+          target: "/opt/multimodule-project/"
+          strip_components: 0
+          overwrite: true
+
+      - name: Set permissions on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/multimodule-project
+            chmod 600 .env
+            echo "✅ .env permissions set (600)"
+
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -71,11 +126,21 @@ jobs:
           script: |
             cd /opt/multimodule-project
             
-            # Запускаем скрипт деплоя из репозитория
-            if [ -f scripts/deploy.sh ]; then
-              chmod +x scripts/deploy.sh
-              ./scripts/deploy.sh
-            else
-              echo "❌ deploy.sh not found in repository"
-              exit 1
-            fi
+            echo "🐳 Pulling latest images..."
+            docker compose -f docker-compose.yml pull
+            docker compose -f docker-compose.apps.yml pull
+            docker compose -f docker-compose.prod.yml pull
+            
+            echo "🛑 Stopping old containers..."
+            docker compose -f docker-compose.prod.yml down 2>/dev/null || true
+            docker compose -f docker-compose.apps.yml down 2>/dev/null || true
+            
+            echo "🚀 Starting services..."
+            docker compose -f docker-compose.yml up -d
+            docker compose -f docker-compose.apps.yml up -d
+            docker compose -f docker-compose.prod.yml up -d
+            
+            echo "🧹 Cleaning up old images..."
+            docker image prune -f
+            
+            echo "✅ Deployment completed!"
