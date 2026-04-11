@@ -58,8 +58,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
-          cache-from: type=gha,scope=telegram-bot  # <-- УНИКАЛЬНЫЙ SCOP
-          cache-to: type=gha,mode=max,scope=telegram-bot # <-- УНИКАЛЬНЫЙ SCOP
+          cache-from: type=gha,scope=telegram-bot
+          cache-to: type=gha,mode=max,scope=telegram-bot
           build-args: ${{ steps.migration-check.outputs.migrations_changed == 'true' && '--no-cache' || '' }}
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
@@ -70,10 +70,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
-            cache-from: type=gha,scope=audio-service  # <-- УНИКАЛЬНЫЙ SCOP
-            cache-to: type=gha,mode=max,scope=audio-service # <-- УНИКАЛЬНЫЙ SCOP
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=audio-service
+          cache-to: type=gha,mode=max,scope=audio-service
 
   deploy:
     needs: build-and-push
