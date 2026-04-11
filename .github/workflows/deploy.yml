@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main, feature/nginx-security ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -41,6 +41,14 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for migration changes
+        id: migration-check
+        run: |
+          if git diff --name-only HEAD~1 | grep '\.sql$'; then
+            echo "migrations_changed=true" >> $GITHUB_OUTPUT
+          fi    
+
       - name: Build and push Telegram Bot
         uses: docker/build-push-action@v5
         with:
@@ -50,8 +58,9 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_TELEGRAM_BOT }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=telegram-bot  # <-- УНИКАЛЬНЫЙ SCOP
+          cache-to: type=gha,mode=max,scope=telegram-bot # <-- УНИКАЛЬНЫЙ SCOP
+          build-args: ${{ steps.migration-check.outputs.migrations_changed == 'true' && '--no-cache' || '' }}
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
         with:
@@ -61,6 +70,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
+            cache-from: type=gha,scope=audio-service  # <-- УНИКАЛЬНЫЙ SCOP
+            cache-to: type=gha,mode=max,scope=audio-service # <-- УНИКАЛЬНЫЙ SCOP
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
