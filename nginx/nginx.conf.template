@@ -12,27 +12,32 @@ http {
 
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                     '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_origin"';
+                    '"$http_user_agent"';
     access_log /var/log/nginx/access.log main;
     error_log /var/log/nginx/error.log warn;
 
+    # CORS - только правильные origin (без path)
     map $http_origin $cors_origin {
         default "";
-        "https://polyrythms.github.io" "$http_origin";
-        "https://polyrythms.github.io/weather-report" "$http_origin";
-        "http://localhost:3000" "$http_origin";
-        "http://localhost:8080" "$http_origin";
+        "~^https://polyrythms\.github\.io$" $http_origin;
+        "~^http://localhost:(3000|8080)$" $http_origin;
+    }
+
+    # Флаг, нужно ли добавлять CORS заголовки
+    map $cors_origin $add_cors {
+        default 0;
+        "~^https?://" 1;
     }
 
     server {
         listen 80;
         listen [::]:80;
         server_name ${DOMAIN};
-        
+
         location / {
-            return 301 https://$host$request_uri;
+            return 301 https://$server_name$request_uri;
         }
-        
+
         location ^~ /.well-known/acme-challenge/ {
             root /var/www/html;
         }
@@ -50,49 +55,45 @@ http {
         ssl_session_cache shared:SSL:50m;
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+        ssl_session_tickets off;
 
-        # Главный location для корня
+        # HSTS
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+        # Главный location для корня (без CORS, это не API)
         location / {
-            add_header 'Access-Control-Allow-Origin' $cors_origin always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
-            add_header 'Access-Control-Expose-Headers' 'Authorization' always;
-
-            if ($request_method = 'OPTIONS') {
-                add_header 'Access-Control-Allow-Origin' $cors_origin;
-                add_header 'Access-Control-Allow-Credentials' 'true';
-                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
-                add_header 'Access-Control-Max-Age' 1728000;
-                add_header 'Content-Length' 0;
-                return 204;
-            }
             return 404;
         }
 
-        # Healthcheck - CORS заголовки добавлены явно
+        # Healthcheck - ТОЛЬКО для внутренней сети Docker
         location /health {
-            add_header 'Access-Control-Allow-Origin' $cors_origin always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
-            add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+            allow 172.16.0.0/12;
+            allow 10.0.0.0/8;
+            deny all;
 
             access_log off;
             return 200 "healthy\n";
             add_header Content-Type text/plain;
         }
 
-        # API - CORS заголовки добавлены явно
+        # API - только здесь CORS заголовки
         location /api/ {
-            add_header 'Access-Control-Allow-Origin' $cors_origin always;
-            add_header 'Access-Control-Allow-Credentials' 'true' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
-            add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+            # Добавляем CORS заголовки только если origin разрешен
+            if ($add_cors) {
+                add_header 'Access-Control-Allow-Origin' $cors_origin always;
+                add_header 'Access-Control-Allow-Credentials' 'true' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
+                add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+            }
 
-            if ($request_method = 'OPTIONS') {
+            # OPTIONS preflight без использования if
+            limit_except OPTIONS {
+                # Все методы кроме OPTIONS идут дальше
+            }
+
+            if ($request_method = OPTIONS) {
                 add_header 'Access-Control-Allow-Origin' $cors_origin;
                 add_header 'Access-Control-Allow-Credentials' 'true';
                 add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
@@ -106,6 +107,7 @@ http {
             add_header Content-Type application/json;
         }
 
+        # Метрики - скрыты
         location /metrics {
             allow 127.0.0.1;
             deny all;
