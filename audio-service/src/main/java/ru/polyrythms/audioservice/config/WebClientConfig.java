@@ -21,9 +21,9 @@ public class WebClientConfig {
                                @Value("${assemblyai.api.key}") String apiKey) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
-                .responseTimeout(Duration.ofSeconds(30))
+                .responseTimeout(Duration.ofSeconds(60))
                 .doOnConnected(conn ->
-                        conn.addHandlerLast(new ReadTimeoutHandler(30))
+                        conn.addHandlerLast(new ReadTimeoutHandler(60))
                                 .addHandlerLast(new WriteTimeoutHandler(30)));
 
         return WebClient.builder()
