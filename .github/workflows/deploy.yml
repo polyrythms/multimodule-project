@@ -167,16 +167,21 @@ jobs:
             echo "=== Waiting for healthchecks to pass ==="
             for service in telegram-bot audio-service; do
               echo "Waiting for $service to become healthy..."
+              container_id=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q "$service")
+              if [ -z "$container_id" ]; then
+                echo "❌ Container for $service not found"
+                exit 1
+              fi
               for i in $(seq 1 30); do
-                status=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "none")
+                status=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "none")
                 if [ "$status" = "healthy" ]; then
                   echo "✅ $service is healthy"
                   break
                 fi
                 if [ "$i" -eq 30 ]; then
-                  echo "❌ $service failed to become healthy"
+                  echo "❌ $service failed to become healthy (last status: $status)"
                   echo "Last logs of $service:"
-                  docker logs "$service" --tail 50
+                  docker logs "$container_id" --tail 50
                   exit 1
                 fi
                 sleep 5

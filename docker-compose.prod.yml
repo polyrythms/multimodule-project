@@ -20,6 +20,7 @@ services:
 
   telegram-bot:
     image: ghcr.io/polyrythms/multimodule-project/telegram-bot:latest
+    container_name: multimodule-project-telegram-bot
     env_file: .env
     environment:
       SPRING_PROFILES_ACTIVE: prod
@@ -47,6 +48,7 @@ services:
 
   audio-service:
     image: ghcr.io/polyrythms/multimodule-project/audio-service:latest
+    container_name: multimodule-project-audio-service
     env_file: .env
     environment:
       SPRING_PROFILES_ACTIVE: prod
