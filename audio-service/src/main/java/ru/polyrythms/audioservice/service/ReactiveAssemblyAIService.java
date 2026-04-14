@@ -131,13 +131,13 @@ public class ReactiveAssemblyAIService {
                 .retrieve()
                 .bodyToMono(UploadResponse.class)
                 .map(UploadResponse::getUploadUrl)
+                .timeout(Duration.ofSeconds(30))
                 .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
                         .jitter(0.5)
                         .maxBackoff(Duration.ofSeconds(10))
                         .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
                             throw new RuntimeException("Upload failed after " + retrySignal.totalRetries() + " retries");
                         }))
-                .timeout(Duration.ofSeconds(30))
                 .doOnSuccess(url -> log.info("Successfully uploaded audio to AssemblyAI, URL: {}", url))
                 .doOnError(e -> log.error("Failed to upload audio to AssemblyAI", e));
     }
