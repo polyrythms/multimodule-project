@@ -79,7 +79,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
-      packages: read  # Добавить permission для чтения пакетов
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -121,7 +121,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.yml,docker-compose.apps.yml,docker-compose.prod.yml,nginx/nginx.conf,.env"
+          source: "docker-compose.yml,docker-compose.prod.yml,nginx/nginx.conf,.env"
           target: "/opt/multimodule-project/"
           strip_components: 0
           overwrite: true
@@ -138,31 +138,52 @@ jobs:
             echo "✅ .env permissions set (600)"
 
       - name: Deploy on server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m
           script: |
+            set -e
             cd /opt/multimodule-project
             
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             echo "🐳 Pulling latest images..."
             docker compose -f docker-compose.yml pull
-            docker compose -f docker-compose.apps.yml pull
             docker compose -f docker-compose.prod.yml pull
-            
-            echo "🛑 Stopping old containers..."
-            docker compose -f docker-compose.prod.yml down --volumes 2>/dev/null || true
-            docker compose -f docker-compose.apps.yml down --volumes 2>/dev/null || true
-            
-            echo "🚀 Starting services..."
+
+            echo "=== Stopping old application containers (keeping infra) ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop telegram-bot audio-service 2>/dev/null || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml rm -f telegram-bot audio-service 2>/dev/null || true
+
+            echo "=== Starting infrastructure (if not running) ==="
             docker compose -f docker-compose.yml up -d
-            docker compose -f docker-compose.apps.yml up -d
-            docker compose -f docker-compose.prod.yml up -d
-            
-            echo "🧹 Cleaning up old images..."
+
+            echo "=== Starting applications ==="
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d telegram-bot audio-service
+
+            echo "=== Waiting for healthchecks to pass ==="
+            for service in telegram-bot audio-service; do
+              echo "Waiting for $service to become healthy..."
+              for i in $(seq 1 30); do
+                status=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "none")
+                if [ "$status" = "healthy" ]; then
+                  echo "✅ $service is healthy"
+                  break
+                fi
+                if [ "$i" -eq 30 ]; then
+                  echo "❌ $service failed to become healthy"
+                  echo "Last logs of $service:"
+                  docker logs "$service" --tail 50
+                  exit 1
+                fi
+                sleep 5
+              done
+            done
+
+            echo "=== Cleaning up old images ==="
             docker image prune -f
-            
-            echo "✅ Deployment completed!"
+
+            echo "=== Deployment completed successfully ==="
