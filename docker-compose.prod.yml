@@ -72,6 +72,35 @@ services:
       retries: 5
       start_period: 120s
 
+  auth-service:
+    image: ghcr.io/polyrythms/multimodule-project/auth-service:latest
+    container_name: multimodule-project-auth-service
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics,env"
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
+      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
+      SERVICE_NAME: auth-service
+      MANAGEMENT_SERVER_PORT: 8081
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+    expose:
+      - "8080"   # основной порт приложения
+      - "8081"   # порт метрик
+    volumes:
+      - ./logs/auth-service:/app/logs
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 networks:
   app-network:
     external: true

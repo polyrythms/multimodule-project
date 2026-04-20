@@ -6,20 +6,19 @@ WORKDIR /build
 # Копируем ВСЕ pom.xml (нужны для корректной работы Maven Reactor)
 COPY pom.xml .
 COPY kafka-commons/pom.xml ./kafka-commons/pom.xml
-COPY audio-service/pom.xml ./audio-service/pom.xml
 COPY telegram-bot/pom.xml ./telegram-bot/pom.xml
+COPY audio-service/pom.xml ./audio-service/pom.xml
 COPY auth-service/pom.xml ./auth-service/pom.xml
 
 # Скачиваем зависимости
 RUN mvn dependency:go-offline -B
 
 # Копируем ТОЛЬКО нужные исходники
-COPY kafka-commons/src ./kafka-commons/src
-COPY audio-service/src ./audio-service/src
+COPY auth-service/src ./auth-service/src
 # НЕ копируем telegram-bot/src (это сэкономит время и кэш)
 
-# Сборка только audio-service
-RUN mvn clean package -pl audio-service -am -DskipTests
+# Сборка только auth-service
+RUN mvn clean package -pl auth-service -am -DskipTests
 
 # Stage 2: Runtime (без изменений)
 FROM eclipse-temurin:21-jre-alpine
@@ -29,7 +28,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
 
 WORKDIR /app
 
-COPY --from=builder /build/audio-service/target/*.jar app.jar
+COPY --from=builder /build/auth-service/target/*.jar app.jar
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

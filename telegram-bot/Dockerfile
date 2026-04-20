@@ -8,6 +8,7 @@ COPY pom.xml .
 COPY kafka-commons/pom.xml ./kafka-commons/pom.xml
 COPY telegram-bot/pom.xml ./telegram-bot/pom.xml
 COPY audio-service/pom.xml ./audio-service/pom.xml
+COPY auth-service/pom.xml ./auth-service/pom.xml
 
 # Скачиваем зависимости
 RUN mvn dependency:go-offline -B

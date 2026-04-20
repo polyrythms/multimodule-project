@@ -2,9 +2,10 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/auth ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feature/auth ]
+
 
 env:
   REGISTRY: ghcr.io
@@ -76,7 +77,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/auth')
     permissions:
       contents: read
       packages: read
@@ -110,8 +111,10 @@ jobs:
           TELEGRAM_ADMIN_USER_ID=${{ secrets.TELEGRAM_ADMIN_USER_ID }}
           ASSEMBLYAI_API_KEY=${{ secrets.ASSEMBLYAI_API_KEY }}
           WEATHER_WEBAPP_URL=${{ secrets.WEATHER_WEBAPP_URL }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          INTERNAL_API_KEY=${{ secrets.INTERNAL_API_KEY }}
+          JWT_PRIVATE_KEY=${{ secrets.JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY=${{ secrets.JWT_PUBLIC_KEY }}
           EOF
           echo "✅ .env file created"
 
@@ -155,17 +158,17 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
 
             echo "=== Stopping old application containers (keeping infra) ==="
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop telegram-bot audio-service 2>/dev/null || true
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml rm -f telegram-bot audio-service 2>/dev/null || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop telegram-bot audio-service auth-service 2>/dev/null || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml rm -f telegram-bot audio-service auth-service 2>/dev/null || true
 
             echo "=== Starting infrastructure (if not running) ==="
             docker compose -f docker-compose.yml up -d
 
             echo "=== Starting applications ==="
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d telegram-bot audio-service
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d telegram-bot audio-service auth-service
 
             echo "=== Waiting for healthchecks to pass ==="
-            for service in telegram-bot audio-service; do
+            for service in telegram-bot audio-service auth-service; do
               echo "Waiting for $service to become healthy..."
               container_id=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q "$service")
               if [ -z "$container_id" ]; then
