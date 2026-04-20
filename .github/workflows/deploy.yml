@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME_TELEGRAM_BOT: ${{ github.repository }}/telegram-bot
   IMAGE_NAME_AUDIO_SERVICE: ${{ github.repository }}/audio-service
+  IMAGE_NAME_AUTH_SERVICE: ${{ github.repository }}/auth-service
 
 jobs:
   test:
@@ -73,6 +74,17 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUDIO_SERVICE }}:${{ github.sha }}
           cache-from: type=gha,scope=audio-service
           cache-to: type=gha,mode=max,scope=audio-service
+      - name: Build and push Auth Service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./auth-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUTH_SERVICE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUTH_SERVICE }}:${{ github.sha }}
+          cache-from: type=gha,scope=auth-service
+          cache-to: type=gha,mode=max,scope=auth-service
 
   deploy:
     needs: build-and-push
