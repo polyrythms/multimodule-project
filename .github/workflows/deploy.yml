@@ -113,8 +113,8 @@ jobs:
           WEATHER_WEBAPP_URL=${{ secrets.WEATHER_WEBAPP_URL }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           INTERNAL_API_KEY=${{ secrets.INTERNAL_API_KEY }}
-          JWT_PRIVATE_KEY=${{ secrets.JWT_PRIVATE_KEY }}
-          JWT_PUBLIC_KEY=${{ secrets.JWT_PUBLIC_KEY }}
+#          JWT_PRIVATE_KEY=${{ secrets.JWT_PRIVATE_KEY }}
+#          JWT_PUBLIC_KEY=${{ secrets.JWT_PUBLIC_KEY }}
           EOF
           echo "✅ .env file created"
 
