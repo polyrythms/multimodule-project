@@ -1,0 +1,26 @@
+server:
+  port: 8083
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8082/.well-known/jwks.json
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    ru.polyrythms: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG
+
+openweathermap:
+  api:
+    url: https://api.openweathermap.org/data/2.5   # можно переопределить
+    key: your_key_here

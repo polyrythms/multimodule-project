@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: weather-service
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+  h2:
+    console:
+      enabled: false
+  cache:
+    type: simple
+    cache-names: weather
+    caffeine:
+      spec: expire-after-write=30m
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
+openweathermap:
+  api:
+    key: ${OPENWEATHERMAP_API_KEY}4dba935ce934b9381d57502dade72d9a
+    url: https://api.openweathermap.org/data/2.5

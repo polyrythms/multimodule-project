@@ -21,6 +21,7 @@
         <module>telegram-bot</module>
         <module>audio-service</module>
         <module>auth-service</module>
+        <module>weather-service</module>
     </modules>
 
     <properties>
