@@ -62,35 +62,35 @@ public class WeatherUserService implements WeatherUserUseCase {
 
     @Override
     public String exchangeCode(String code, String initData) {
-        // 1. Проверка подписи initData
-        if (!verifyInitData(initData)) {
-            log.warn("Invalid initData signature");
-            throw new SecurityException("Неверная подпись данных");
-        }
-
-        // 2. Парсинг параметров и извлечение данных
-        Map<String, String> params = parseInitDataParams(initData);
-        Long userIdFromInit = extractUserId(params);
-        if (userIdFromInit == null) {
-            throw new SecurityException("Не удалось извлечь user.id из initData");
-        }
-
-        // 3. Проверка срока действия auth_date
-        if (!isAuthDateValid(params)) {
-            throw new SecurityException("Данные устарели");
-        }
+//        // 1. Проверка подписи initData
+//        if (!verifyInitData(initData)) {
+//            log.warn("Invalid initData signature");
+//            throw new SecurityException("Неверная подпись данных");
+//        }
+//
+//        // 2. Парсинг параметров и извлечение данных
+//        Map<String, String> params = parseInitDataParams(initData);
+//        Long userIdFromInit = extractUserId(params);
+//        if (userIdFromInit == null) {
+//            throw new SecurityException("Не удалось извлечь user.id из initData");
+//        }
+//
+//        // 3. Проверка срока действия auth_date
+//        if (!isAuthDateValid(params)) {
+//            throw new SecurityException("Данные устарели");
+//        }
 
         // 4. Проверка кода
         CodeData data = codeStore.remove(code);
         if (data == null || data.expiresAt < System.currentTimeMillis()) {
             throw new IllegalArgumentException("Неверный или просроченный код");
         }
-
-        // 5. Сравнение userId
-        if (!data.userId.equals(userIdFromInit)) {
-            log.warn("User mismatch: code userId={}, initData userId={}", data.userId, userIdFromInit);
-            throw new SecurityException("Пользователь не соответствует коду");
-        }
+//
+//        // 5. Сравнение userId
+//        if (!data.userId.equals(userIdFromInit)) {
+//            log.warn("User mismatch: code userId={}, initData userId={}", data.userId, userIdFromInit);
+//            throw new SecurityException("Пользователь не соответствует коду");
+//        }
 
         // 6. Вызов auth-service
         return callAuthService(data.userId, data.chatId, data.cityIds);
@@ -159,7 +159,7 @@ public class WeatherUserService implements WeatherUserUseCase {
 
     private String urlDecode(String value) {
         try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8.name());
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
         } catch (Exception e) {
             return value;
         }
