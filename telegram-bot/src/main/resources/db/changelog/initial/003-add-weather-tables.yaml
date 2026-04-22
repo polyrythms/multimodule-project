@@ -1,0 +1,36 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-add-cities-and-group-cities
+      author: denis
+      changes:
+        - createTable:
+            tableName: cities
+            columns:
+              - column: { name: id, type: bigint, autoIncrement: true, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: name, type: varchar(100), constraints: { nullable: false, unique: true } }
+              - column: { name: created_at, type: timestamp, defaultValueComputed: CURRENT_TIMESTAMP }
+        - createTable:
+            tableName: group_cities
+            columns:
+              - column: { name: id, type: bigint, autoIncrement: true, constraints: { primaryKey: true, nullable: false } }
+              - column: { name: group_chat_id, type: bigint, constraints: { nullable: false } }
+              - column: { name: city_id, type: bigint, constraints: { nullable: false } }
+              - column: { name: assigned_at, type: timestamp, defaultValueComputed: CURRENT_TIMESTAMP }
+        - addForeignKeyConstraint:
+            constraintName: fk_group_cities_city
+            baseTableName: group_cities
+            baseColumnNames: city_id
+            referencedTableName: cities
+            referencedColumnNames: id
+        - insert:
+            tableName: cities
+            columns:
+              - column: { name: name, value: "Москва" }
+        - insert:
+            tableName: cities
+            columns:
+              - column: { name: name, value: "Санкт-Петербург" }
+        - insert:
+            tableName: cities
+            columns:
+              - column: { name: name, value: "Казань" }

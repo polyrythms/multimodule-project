@@ -3,3 +3,5 @@ databaseChangeLog:
       file: db/changelog/initial/001-initial-schema.yaml
   - include:
       file: db/changelog/initial/002-initial-data.sql
+  - include:
+      file: db/changelog/initial/003-add-weather-tables.yaml

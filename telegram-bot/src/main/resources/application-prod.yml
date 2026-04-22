@@ -56,3 +56,7 @@ logging:
     rollingpolicy:
       max-file-size: 10MB
       max-history: 30
+
+auth:
+  service:
+    url: http://auth-service:8080

@@ -27,3 +27,7 @@ logging:
   level:
     org.springframework.kafka: DEBUG
     org.apache.kafka: DEBUG
+
+auth:
+  service:
+    url: http://localhost:8082

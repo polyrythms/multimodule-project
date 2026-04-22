@@ -45,6 +45,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   audio-service:
     image: ghcr.io/polyrythms/multimodule-project/audio-service:latest
@@ -71,6 +76,11 @@ services:
       timeout: 15s
       retries: 5
       start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   auth-service:
     image: ghcr.io/polyrythms/multimodule-project/auth-service:latest
@@ -100,6 +110,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 
 networks:
   app-network:
