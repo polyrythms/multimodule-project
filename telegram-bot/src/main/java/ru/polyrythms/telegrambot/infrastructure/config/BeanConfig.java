@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import ru.polyrythms.telegrambot.application.port.input.*;
 import ru.polyrythms.telegrambot.application.port.output.*;
 import ru.polyrythms.telegrambot.application.service.*;
+import ru.polyrythms.telegrambot.infrastructure.adapter.output.telegram.TelegramBotClient;
 
 @Configuration
 @EnableAsync
@@ -27,11 +28,17 @@ public class BeanConfig {
     public CommandHandlingUseCase commandHandlingUseCase(
             AdminManagementUseCase adminManagementUseCase,
             GroupManagementUseCase groupManagementUseCase,
-            MessageSender messageSender) {
+            MessageSender messageSender,
+            WeatherAdminUseCase weatherAdminUseCase,
+            WeatherUserUseCase weatherUserUseCase,
+            TelegramBotClient telegramBotClient) {
         return new CommandHandlingService(
                 adminManagementUseCase,
                 groupManagementUseCase,
-                messageSender);
+                messageSender,
+                weatherAdminUseCase,
+                weatherUserUseCase,
+                telegramBotClient);
     }
 
     @Bean

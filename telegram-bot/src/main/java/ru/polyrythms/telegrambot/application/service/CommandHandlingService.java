@@ -411,18 +411,21 @@ public class CommandHandlingService implements CommandHandlingUseCase {
         try {
             String code = weatherUserUseCase.generateWeatherCode(userId, chatId);
             String webAppUrlWithCode = weatherWebAppUrl + "?startapp=" + code;
-            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-            List<List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
-            InlineKeyboardButton button = new InlineKeyboardButton();
-            button.setText("🌤 Открыть прогноз погоды");
-            button.setWebApp(new WebAppInfo(webAppUrlWithCode));
-            rows.add(List.of(button));
-            markup.setKeyboard(rows);
-            SendMessage message = new SendMessage();
-            message.setChatId(chatId.toString());
-            message.setText("Нажмите кнопку, чтобы открыть прогноз погоды:");
-            message.setReplyMarkup(markup);
-            botClient.execute(message);
+//            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+//            List<List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
+//            InlineKeyboardButton button = new InlineKeyboardButton();
+//            button.setText("🌤 Открыть прогноз погоды");
+//            button.setWebApp(new WebAppInfo(webAppUrlWithCode));
+//            rows.add(List.of(button));
+//            markup.setKeyboard(rows);
+//            SendMessage message = new SendMessage();
+//            message.setChatId(chatId.toString());
+//            message.setText("Нажмите кнопку, чтобы открыть прогноз погоды:");
+//            message.setReplyMarkup(markup);
+
+            String messageText = "🌤 Прогноз погоды:\n" + webAppUrlWithCode;
+            messageSender.sendMessage(chatId, messageText);
+//            botClient.execute(message);
         } catch (Exception e) {
             log.error("Weather command failed for chatId {}: {}", chatId, e.getMessage());
             messageSender.sendMessage(chatId, "❌ Не удалось сформировать запрос: " + e.getMessage());
