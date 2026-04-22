@@ -116,6 +116,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  weather-service:
+    image: ghcr.io/polyrythms/multimodule-project/weather-service:latest
+    container_name: multimodule-project-weather-service
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics,env"
+      MANAGEMENT_ENDPOINT_PROMETHEUS_ENABLED: "true"
+      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
+      SERVICE_NAME: weather-service
+      MANAGEMENT_SERVER_PORT: 8081
+      OPENWEATHERMAP_API_KEY: ${OPENWEATHERMAP_API_KEY}
+    expose:
+      - "8080"
+      - "8081"
+    volumes:
+      - ./logs/weather-service:/app/logs
+      - ./data/weather-service:/app/data   # для H2 базы
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 
 networks:
   app-network:
