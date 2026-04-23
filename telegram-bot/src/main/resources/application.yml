@@ -8,6 +8,9 @@ spring:
   liquibase:
     parameters:
       TELEGRAM_ADMIN_USER_ID: ${TELEGRAM_ADMIN_USER_ID}
+  cache:
+    type: simple
+    cache-names: membership
 
 telegram:
   thread-pool:

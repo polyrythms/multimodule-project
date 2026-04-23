@@ -38,6 +38,7 @@ public class CommandHandlingService implements CommandHandlingUseCase {
     private final WeatherAdminUseCase weatherAdminUseCase;
     private final WeatherUserUseCase weatherUserUseCase;
     private final TelegramBotClient botClient;
+    private final GroupMembershipService membershipService;
 
     @Value("${weather.webapp.url}")
     private String weatherWebAppUrl;
@@ -228,7 +229,7 @@ public class CommandHandlingService implements CommandHandlingUseCase {
         }
         List<TelegramGroupDto> groupDtos = groups.stream()
                 .map(TelegramGroupDto::fromDomain)
-                .collect(Collectors.toList());
+                .toList();
         StringBuilder response = new StringBuilder("📋 Список групп:\n\n");
         for (TelegramGroupDto group : groupDtos) {
             response.append(group.getIsActive() ? "✅ " : "❌ ")
@@ -402,6 +403,16 @@ public class CommandHandlingService implements CommandHandlingUseCase {
     }
 
     private void handleWeatherCommand(Long chatId, Long userId) {
+        // 1. Проверяем, что пользователь является участником группы
+        if (!membershipService.isUserMemberOfGroup(chatId, userId)) {
+            messageSender.sendMessage(chatId,
+                    """
+                            ❌ Вы не являетесь участником этой группы.
+                            
+                            Для получения прогноза погоды необходимо быть участником группы.""");
+            return;
+        }
+
         // Проверяем, что группа имеет доступ к погоде (хотя бы один город привязан)
         List<City> citiesForGroup = weatherAdminUseCase.getCitiesForGroup(chatId);
         if (citiesForGroup.isEmpty()) {

@@ -31,14 +31,16 @@ public class BeanConfig {
             MessageSender messageSender,
             WeatherAdminUseCase weatherAdminUseCase,
             WeatherUserUseCase weatherUserUseCase,
-            TelegramBotClient telegramBotClient) {
+            TelegramBotClient telegramBotClient,
+            GroupMembershipService membershipService) {
         return new CommandHandlingService(
                 adminManagementUseCase,
                 groupManagementUseCase,
                 messageSender,
                 weatherAdminUseCase,
                 weatherUserUseCase,
-                telegramBotClient);
+                telegramBotClient,
+                membershipService);
     }
 
     @Bean
