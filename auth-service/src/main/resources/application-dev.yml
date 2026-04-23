@@ -1,0 +1,10 @@
+server:
+  port: 8082
+
+logging:
+  level:
+    ru.polyrythms: DEBUG
+
+internal:
+  auth:
+    key: test-local-key-123

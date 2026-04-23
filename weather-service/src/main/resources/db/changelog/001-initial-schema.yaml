@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-city-mapping-table
+      author: denis
+      changes:
+        - createTable:
+            tableName: city_mapping
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: city_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: city_name
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: openweathermap_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+
+        - createIndex:
+            indexName: idx_city_id
+            tableName: city_mapping
+            columns:
+              - column:
+                  name: city_id
+
+        - insert:
+            tableName: city_mapping
+            columns:
+              - column: { name: city_id, valueNumeric: 1 }
+              - column: { name: city_name, value: "Москва" }
+              - column: { name: openweathermap_id, valueNumeric: 524901 }
+        - insert:
+            tableName: city_mapping
+            columns:
+              - column: { name: city_id, valueNumeric: 2 }
+              - column: { name: city_name, value: "Санкт-Петербург" }
+              - column: { name: openweathermap_id, valueNumeric: 498817 }
+        - insert:
+            tableName: city_mapping
+            columns:
+              - column: { name: city_id, valueNumeric: 3 }
+              - column: { name: city_name, value: "Казань" }
+              - column: { name: openweathermap_id, valueNumeric: 551487 }

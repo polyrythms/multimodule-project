@@ -2,14 +2,16 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/auth ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feature/auth ]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME_TELEGRAM_BOT: ${{ github.repository }}/telegram-bot
   IMAGE_NAME_AUDIO_SERVICE: ${{ github.repository }}/audio-service
+  IMAGE_NAME_AUTH_SERVICE: ${{ github.repository }}/auth-service
+  IMAGE_NAME_WEATHER_SERVICE: ${{ github.repository }}/weather-service
 
 jobs:
   test:
@@ -47,7 +49,7 @@ jobs:
         run: |
           if git diff --name-only HEAD~1 | grep '\.sql$'; then
             echo "migrations_changed=true" >> $GITHUB_OUTPUT
-          fi    
+          fi
 
       - name: Build and push Telegram Bot
         uses: docker/build-push-action@v5
@@ -61,6 +63,7 @@ jobs:
           cache-from: type=gha,scope=telegram-bot
           cache-to: type=gha,mode=max,scope=telegram-bot
           build-args: ${{ steps.migration-check.outputs.migrations_changed == 'true' && '--no-cache' || '' }}
+
       - name: Build and push Audio Service
         uses: docker/build-push-action@v5
         with:
@@ -73,10 +76,34 @@ jobs:
           cache-from: type=gha,scope=audio-service
           cache-to: type=gha,mode=max,scope=audio-service
 
+      - name: Build and push Auth Service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./auth-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUTH_SERVICE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_AUTH_SERVICE }}:${{ github.sha }}
+          cache-from: type=gha,scope=auth-service
+          cache-to: type=gha,mode=max,scope=auth-service
+
+      - name: Build and push Weather Service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./weather-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEATHER_SERVICE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEATHER_SERVICE }}:${{ github.sha }}
+          cache-from: type=gha,scope=weather-service
+          cache-to: type=gha,mode=max,scope=weather-service
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/auth')
     permissions:
       contents: read
       packages: read
@@ -110,8 +137,9 @@ jobs:
           TELEGRAM_ADMIN_USER_ID=${{ secrets.TELEGRAM_ADMIN_USER_ID }}
           ASSEMBLYAI_API_KEY=${{ secrets.ASSEMBLYAI_API_KEY }}
           WEATHER_WEBAPP_URL=${{ secrets.WEATHER_WEBAPP_URL }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          INTERNAL_API_KEY=${{ secrets.INTERNAL_API_KEY }}
+          OPENWEATHERMAP_API_KEY=${{ secrets.OPENWEATHERMAP_API_KEY }}
           EOF
           echo "✅ .env file created"
 
@@ -155,17 +183,17 @@ jobs:
             docker compose -f docker-compose.prod.yml pull
 
             echo "=== Stopping old application containers (keeping infra) ==="
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop telegram-bot audio-service 2>/dev/null || true
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml rm -f telegram-bot audio-service 2>/dev/null || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml stop telegram-bot audio-service auth-service weather-service 2>/dev/null || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml rm -f telegram-bot audio-service auth-service weather-service 2>/dev/null || true
 
             echo "=== Starting infrastructure (if not running) ==="
             docker compose -f docker-compose.yml up -d
 
             echo "=== Starting applications ==="
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d telegram-bot audio-service
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d telegram-bot audio-service auth-service weather-service
 
             echo "=== Waiting for healthchecks to pass ==="
-            for service in telegram-bot audio-service; do
+            for service in telegram-bot audio-service auth-service weather-service; do
               echo "Waiting for $service to become healthy..."
               container_id=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q "$service")
               if [ -z "$container_id" ]; then

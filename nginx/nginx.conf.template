@@ -113,5 +113,55 @@ http {
             deny all;
             return 404;
         }
+
+location /exchange {
+    # CORS
+    if ($add_cors) {
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
+        add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+    }
+    if ($request_method = OPTIONS) {
+        add_header 'Access-Control-Allow-Origin' $cors_origin;
+        add_header 'Access-Control-Allow-Credentials' 'true';
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
+        add_header 'Access-Control-Max-Age' 1728000;
+        add_header 'Content-Length' 0;
+        return 204;
+    }
+    proxy_pass http://telegram-bot:8080/exchange;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /weather/ {
+    # аналогично добавить CORS
+    if ($add_cors) {
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
+        add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+    }
+    if ($request_method = OPTIONS) {
+        add_header 'Access-Control-Allow-Origin' $cors_origin;
+        add_header 'Access-Control-Allow-Credentials' 'true';
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
+        add_header 'Access-Control-Max-Age' 1728000;
+        add_header 'Content-Length' 0;
+        return 204;
+    }
+    proxy_pass http://weather-service:8080/weather/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
     }
 }
