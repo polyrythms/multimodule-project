@@ -6,15 +6,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.webapp.WebAppInfo;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.webapp.WebAppInfo;
 import ru.polyrythms.telegrambot.application.dto.AdminUserDto;
 import ru.polyrythms.telegrambot.application.dto.TelegramGroupDto;
-import ru.polyrythms.telegrambot.application.port.input.AdminManagementUseCase;
-import ru.polyrythms.telegrambot.application.port.input.CommandHandlingUseCase;
-import ru.polyrythms.telegrambot.application.port.input.GroupManagementUseCase;
-import ru.polyrythms.telegrambot.application.port.input.WeatherAdminUseCase;
-import ru.polyrythms.telegrambot.application.port.input.WeatherUserUseCase;
+import ru.polyrythms.telegrambot.application.port.input.*;
 import ru.polyrythms.telegrambot.application.port.output.MessageSender;
 import ru.polyrythms.telegrambot.domain.model.AdminRole;
 import ru.polyrythms.telegrambot.domain.model.AdminUser;
@@ -25,7 +21,6 @@ import ru.polyrythms.telegrambot.infrastructure.adapter.output.telegram.Telegram
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -422,21 +417,18 @@ public class CommandHandlingService implements CommandHandlingUseCase {
         try {
             String code = weatherUserUseCase.generateWeatherCode(userId, chatId);
             String webAppUrlWithCode = weatherWebAppUrl + "?startapp=" + code;
-//            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-//            List<List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
-//            InlineKeyboardButton button = new InlineKeyboardButton();
-//            button.setText("🌤 Открыть прогноз погоды");
-//            button.setWebApp(new WebAppInfo(webAppUrlWithCode));
-//            rows.add(List.of(button));
-//            markup.setKeyboard(rows);
-//            SendMessage message = new SendMessage();
-//            message.setChatId(chatId.toString());
-//            message.setText("Нажмите кнопку, чтобы открыть прогноз погоды:");
-//            message.setReplyMarkup(markup);
-
-            String messageText = "🌤 Прогноз погоды:\n" + webAppUrlWithCode;
-            messageSender.sendMessage(chatId, messageText);
-//            botClient.execute(message);
+            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+            List<List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
+            InlineKeyboardButton button = new InlineKeyboardButton();
+            button.setText("🌤 Открыть прогноз погоды");
+            button.setWebApp(new WebAppInfo(webAppUrlWithCode));
+            rows.add(List.of(button));
+            markup.setKeyboard(rows);
+            SendMessage message = new SendMessage();
+            message.setChatId(chatId.toString());
+            message.setText("Нажмите кнопку, чтобы открыть прогноз погоды:");
+            message.setReplyMarkup(markup);
+            botClient.execute(message);
         } catch (Exception e) {
             log.error("Weather command failed for chatId {}: {}", chatId, e.getMessage());
             messageSender.sendMessage(chatId, "❌ Не удалось сформировать запрос: " + e.getMessage());
