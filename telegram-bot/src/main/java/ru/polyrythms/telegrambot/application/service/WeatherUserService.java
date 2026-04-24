@@ -19,6 +19,8 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -153,31 +155,26 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
 
         try {
-            // 1. Разбираем параметры вручную (сохраняем строку)
+            // 1. Разбираем параметры
             Map<String, String> params = new LinkedHashMap<>();
-            String[] pairs = initData.split("&");
-            for (String pair : pairs) {
-                int idx = pair.indexOf("=");
-                if (idx > 0) {
-                    String key = pair.substring(0, idx);
-                    String value = URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8.name());
-                    params.put(key, value);
+            for (String pair : initData.split("&")) {
+                String[] keyValue = pair.split("=", 2);
+                if (keyValue.length == 2) {
+                    params.put(keyValue[0], keyValue[1]); // НЕ декодируем значения!
                 }
             }
 
-            log.info("Parsed params keys: {}", params.keySet());
-
-            // 2. Извлекаем hash
+            // 2. Извлекаем и удаляем hash
             String receivedHash = params.remove("hash");
             if (receivedHash == null) {
-                log.warn("Hash parameter not found");
+                log.warn("Hash not found");
                 return false;
             }
 
-            // 3. Удаляем signature (не используется в WebApp)
+            // 3. Удаляем signature (не используется)
             params.remove("signature");
 
-            // 4. Формируем строку для проверки
+            // 4. Формируем строку для проверки (значения НЕ декодируем)
             String dataCheckString = params.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .map(entry -> entry.getKey() + "=" + entry.getValue())
@@ -185,22 +182,16 @@ public class WeatherUserService implements WeatherUserUseCase {
 
             log.debug("Data check string:\n{}", dataCheckString);
 
-            // 5. Вычисляем secret_key: HMAC-SHA256(bot_token, "WebAppData")
-            byte[] secretKeyBytes = hmacSha256(botToken.getBytes(StandardCharsets.UTF_8), "WebAppData".getBytes(StandardCharsets.UTF_8));
-            SecretKeySpec secretKey = new SecretKeySpec(secretKeyBytes, "HmacSHA256");
+            // 5. Вычисляем секретный ключ: HMAC-SHA256("WebAppData", bot_token)
+            String secretKey = hmacSha256("WebAppData", botToken);
 
-            // 6. Вычисляем ожидаемый hash
-            Mac hmac = Mac.getInstance("HmacSHA256");
-            hmac.init(secretKey);
-            byte[] calculatedHashBytes = hmac.doFinal(dataCheckString.getBytes(StandardCharsets.UTF_8));
-            String calculatedHash = bytesToHex(calculatedHashBytes);
+            // 6. Вычисляем ожидаемый hash: HMAC-SHA256(dataCheckString, secretKey)
+            String expectedHash = hmacSha256(dataCheckString, secretKey);
 
             log.info("Received hash: {}", receivedHash);
-            log.info("Calculated hash: {}", calculatedHash);
+            log.info("Expected hash: {}", expectedHash);
 
-            boolean isValid = calculatedHash.equals(receivedHash);
-            log.info("Verification result: {}", isValid);
-            return isValid;
+            return expectedHash.equals(receivedHash);
 
         } catch (Exception e) {
             log.error("Error verifying init data", e);
@@ -208,13 +199,14 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
     }
 
-    private byte[] hmacSha256(byte[] key, byte[] message) {
+    private String hmacSha256(String data, String key) {
         try {
-            Mac hmac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKeySpec = new SecretKeySpec(key, "HmacSHA256");
-            hmac.init(secretKeySpec);
-            return hmac.doFinal(message);
-        } catch (Exception e) {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKeySpec);
+            byte[] result = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(result);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             throw new RuntimeException("HMAC-SHA256 error", e);
         }
     }
