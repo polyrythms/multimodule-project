@@ -146,17 +146,6 @@ public class WeatherUserService implements WeatherUserUseCase {
         return callAuthService(data.userId, data.chatId, data.cityIds);
     }
 
-    // ==================== Верификация initData (ручная) ====================
-
-    /**
-     * Проверяет подпись initData согласно спецификации Telegram.
-     * Алгоритм:
-     * 1. Удалить параметр hash.
-     * 2. Оставшиеся пары key=value отсортировать по ключу и объединить через \n.
-     * 3. Вычислить HMAC-SHA256 от полученной строки, используя секретный ключ:
-     * secret = HMAC-SHA256("WebAppData", botToken)
-     * 4. Сравнить полученный хеш с переданным (в шестнадцатеричном виде).
-     */
     public boolean verifyInitData(String initData) {
         if (initData == null || initData.isEmpty()) {
             log.warn("initData is null or empty");
@@ -164,28 +153,31 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
 
         try {
-            // 1. Разбираем параметры
+            // 1. Разбираем параметры вручную (сохраняем строку)
             Map<String, String> params = new LinkedHashMap<>();
-            for (String pair : initData.split("&")) {
-                String[] keyValue = pair.split("=", 2);
-                if (keyValue.length == 2) {
-                    String key = keyValue[0];
-                    String value = URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8.name());
+            String[] pairs = initData.split("&");
+            for (String pair : pairs) {
+                int idx = pair.indexOf("=");
+                if (idx > 0) {
+                    String key = pair.substring(0, idx);
+                    String value = URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8.name());
                     params.put(key, value);
                 }
             }
 
-            // 2. Извлекаем и удаляем hash
+            log.info("Parsed params keys: {}", params.keySet());
+
+            // 2. Извлекаем hash
             String receivedHash = params.remove("hash");
             if (receivedHash == null) {
                 log.warn("Hash parameter not found");
                 return false;
             }
 
-            // 3. Удаляем signature (используется только для сторонней валидации)
+            // 3. Удаляем signature (не используется в WebApp)
             params.remove("signature");
 
-            // 4. Сортируем ключи и формируем строку для проверки
+            // 4. Формируем строку для проверки
             String dataCheckString = params.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .map(entry -> entry.getKey() + "=" + entry.getValue())
@@ -193,27 +185,46 @@ public class WeatherUserService implements WeatherUserUseCase {
 
             log.debug("Data check string:\n{}", dataCheckString);
 
-            // 5. Вычисляем секретный ключ: HMAC-SHA256(bot_token, "WebAppData")
-            Mac hmac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKey = new SecretKeySpec(
-                    hmacSha256(botToken.getBytes(StandardCharsets.UTF_8), "WebAppData".getBytes(StandardCharsets.UTF_8)),
-                    "HmacSHA256"
-            );
-            hmac.init(secretKey);
+            // 5. Вычисляем secret_key: HMAC-SHA256(bot_token, "WebAppData")
+            byte[] secretKeyBytes = hmacSha256(botToken.getBytes(StandardCharsets.UTF_8), "WebAppData".getBytes(StandardCharsets.UTF_8));
+            SecretKeySpec secretKey = new SecretKeySpec(secretKeyBytes, "HmacSHA256");
 
-            // 6. Вычисляем hash
+            // 6. Вычисляем ожидаемый hash
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            hmac.init(secretKey);
             byte[] calculatedHashBytes = hmac.doFinal(dataCheckString.getBytes(StandardCharsets.UTF_8));
             String calculatedHash = bytesToHex(calculatedHashBytes);
 
-            log.debug("Received hash: {}", receivedHash);
-            log.debug("Calculated hash: {}", calculatedHash);
+            log.info("Received hash: {}", receivedHash);
+            log.info("Calculated hash: {}", calculatedHash);
 
-            return calculatedHash.equals(receivedHash);
+            boolean isValid = calculatedHash.equals(receivedHash);
+            log.info("Verification result: {}", isValid);
+            return isValid;
 
         } catch (Exception e) {
             log.error("Error verifying init data", e);
             return false;
         }
+    }
+
+    private byte[] hmacSha256(byte[] key, byte[] message) {
+        try {
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(key, "HmacSHA256");
+            hmac.init(secretKeySpec);
+            return hmac.doFinal(message);
+        } catch (Exception e) {
+            throw new RuntimeException("HMAC-SHA256 error", e);
+        }
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     private String generateJwtForUser(Long userId, Long chatId, List<Long> cityIds) {
@@ -256,24 +267,6 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
     }
 
-    private byte[] hmacSha256(byte[] key, byte[] message) {
-        try {
-            Mac hmac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKeySpec = new SecretKeySpec(key, "HmacSHA256");
-            hmac.init(secretKeySpec);
-            return hmac.doFinal(message);
-        } catch (Exception e) {
-            throw new RuntimeException("HMAC-SHA256 error", e);
-        }
-    }
-
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
 
     public Map<String, String> parseInitDataParams(String initData) {
         return Arrays.stream(initData.split("&"))
