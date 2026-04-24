@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-add-test-group
+      author: denis
+      changes:
+        - insert:
+            tableName: telegram_groups
+            columns:
+              - column: { name: chat_id, valueNumeric: -1003177968298 }
+              - column: { name: title, value: "Тестовая группа 2" }
+              - column: { name: is_active, valueBoolean: true }
+              - column: { name: added_by, valueNumeric: 8285277203 }  # ID вашего аккаунта в Telegram (владелец)
+        - insert:
+            tableName: group_cities
+            columns:
+              - column: { name: group_chat_id, valueNumeric: -1003177968298 }
+              - column: { name: city_id, valueNumeric: 1 }
+        - insert:
+            tableName: group_cities
+            columns:
+              - column: { name: group_chat_id, valueNumeric: -1003177968298 }
+              - column: { name: city_id, valueNumeric: 2 }
