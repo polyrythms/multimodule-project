@@ -61,25 +61,68 @@ http {
         # HSTS
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
 
-        # Главный location для корня (без CORS, это не API)
-        location / {
-            return 404;
-        }
-
-        # Healthcheck - ТОЛЬКО для внутренней сети Docker
+        # ========== HEALTHCHECK ==========
         location /health {
             allow 172.16.0.0/12;
             allow 10.0.0.0/8;
             deny all;
-
             access_log off;
             return 200 "healthy\n";
             add_header Content-Type text/plain;
         }
 
-        # API - только здесь CORS заголовки
+        # ========== AUTH API ==========
+        location /auth/ {
+            if ($add_cors) {
+                add_header 'Access-Control-Allow-Origin' $cors_origin always;
+                add_header 'Access-Control-Allow-Credentials' 'true' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
+                add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+            }
+            if ($request_method = OPTIONS) {
+                add_header 'Access-Control-Allow-Origin' $cors_origin;
+                add_header 'Access-Control-Allow-Credentials' 'true';
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
+                add_header 'Access-Control-Max-Age' 1728000;
+                add_header 'Content-Length' 0;
+                return 204;
+            }
+            proxy_pass http://telegram-bot:8080/auth/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # ========== WEATHER API ==========
+        location /weather/ {
+            if ($add_cors) {
+                add_header 'Access-Control-Allow-Origin' $cors_origin always;
+                add_header 'Access-Control-Allow-Credentials' 'true' always;
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
+                add_header 'Access-Control-Expose-Headers' 'Authorization' always;
+            }
+            if ($request_method = OPTIONS) {
+                add_header 'Access-Control-Allow-Origin' $cors_origin;
+                add_header 'Access-Control-Allow-Credentials' 'true';
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
+                add_header 'Access-Control-Max-Age' 1728000;
+                add_header 'Content-Length' 0;
+                return 204;
+            }
+            proxy_pass http://weather-service:8080/weather/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # ========== API (общий fallback) ==========
         location /api/ {
-            # Добавляем CORS заголовки только если origin разрешен
             if ($add_cors) {
                 add_header 'Access-Control-Allow-Origin' $cors_origin always;
                 add_header 'Access-Control-Allow-Credentials' 'true' always;
@@ -87,12 +130,6 @@ http {
                 add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
                 add_header 'Access-Control-Expose-Headers' 'Authorization' always;
             }
-
-            # OPTIONS preflight без использования if
-            limit_except OPTIONS {
-                # Все методы кроме OPTIONS идут дальше
-            }
-
             if ($request_method = OPTIONS) {
                 add_header 'Access-Control-Allow-Origin' $cors_origin;
                 add_header 'Access-Control-Allow-Credentials' 'true';
@@ -102,66 +139,30 @@ http {
                 add_header 'Content-Length' 0;
                 return 204;
             }
-
             return 404 '{"error":"API not implemented yet"}';
             add_header Content-Type application/json;
         }
 
-        # Метрики - скрыты
+        # ========== JWKS (только для внутренней сети) ==========
+        location /.well-known/jwks.json {
+            allow 172.16.0.0/12;
+            allow 10.0.0.0/8;
+            deny all;
+            proxy_pass http://auth-service:8080/.well-known/jwks.json;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # ========== METRICS ==========
         location /metrics {
             allow 127.0.0.1;
             deny all;
             return 404;
         }
 
-location /auth/ {
-    # CORS
-    if ($add_cors) {
-        add_header 'Access-Control-Allow-Origin' $cors_origin always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
-        add_header 'Access-Control-Expose-Headers' 'Authorization' always;
-    }
-    if ($request_method = OPTIONS) {
-        add_header 'Access-Control-Allow-Origin' $cors_origin;
-        add_header 'Access-Control-Allow-Credentials' 'true';
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
-        add_header 'Access-Control-Max-Age' 1728000;
-        add_header 'Content-Length' 0;
-        return 204;
-    }
-    proxy_pass http://telegram-bot:8080/auth/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-location /weather/ {
-    # аналогично добавить CORS
-    if ($add_cors) {
-        add_header 'Access-Control-Allow-Origin' $cors_origin always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With' always;
-        add_header 'Access-Control-Expose-Headers' 'Authorization' always;
-    }
-    if ($request_method = OPTIONS) {
-        add_header 'Access-Control-Allow-Origin' $cors_origin;
-        add_header 'Access-Control-Allow-Credentials' 'true';
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept, X-Requested-With';
-        add_header 'Access-Control-Max-Age' 1728000;
-        add_header 'Content-Length' 0;
-        return 204;
-    }
-    proxy_pass http://weather-service:8080/weather/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
+        # ========== CATCH-ALL (должен быть последним) ==========
+        location / {
+            return 404;
+        }
     }
 }
