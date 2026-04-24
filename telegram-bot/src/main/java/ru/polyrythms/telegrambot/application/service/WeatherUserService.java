@@ -163,25 +163,20 @@ public class WeatherUserService implements WeatherUserUseCase {
      */
     public boolean verifyInitData(String initData) {
         log.info("=== VERIFY INIT DATA ===");
-        log.info("Raw initData: {}", initData);
-
         if (initData == null || initData.isBlank()) {
             log.warn("initData is null or blank");
             return false;
         }
 
         Map<String, String> params = parseInitDataParams(initData);
-        log.info("Parsed params keys: {}", params.keySet());
-
         String hash = params.remove("hash");
-        log.info("Extracted hash: {}", hash);
 
         if (hash == null || hash.isEmpty()) {
             log.warn("Hash is missing");
             return false;
         }
 
-        // Формируем строку для проверки
+        // Сортируем ключи и формируем строку для проверки
         String checkString = params.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(e -> e.getKey() + "=" + e.getValue())
@@ -191,10 +186,8 @@ public class WeatherUserService implements WeatherUserUseCase {
 
         // Генерация секретного ключа
         String secretKey = hmacSha256("WebAppData", botToken);
-        log.info("Bot token used: {}", botToken);
-        log.info("Secret key (first 20 chars): {}", secretKey.substring(0, Math.min(20, secretKey.length())));
-
         String expectedHash = hmacSha256(checkString, secretKey);
+
         log.info("Expected hash: {}", expectedHash);
         log.info("Actual hash: {}", hash);
 
@@ -250,7 +243,7 @@ public class WeatherUserService implements WeatherUserUseCase {
             SecretKeySpec secretKeySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             mac.init(secretKeySpec);
             byte[] result = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(result);
+            return bytesToHex(result).toLowerCase();
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             throw new RuntimeException("HMAC-SHA256 error", e);
         }
@@ -278,6 +271,7 @@ public class WeatherUserService implements WeatherUserUseCase {
         try {
             return URLDecoder.decode(value, StandardCharsets.UTF_8);
         } catch (Exception e) {
+            log.warn("Failed to decode URL parameter: {}", value, e);
             return value;
         }
     }
