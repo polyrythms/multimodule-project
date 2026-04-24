@@ -19,8 +19,6 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -34,6 +32,7 @@ public class WeatherUserService implements WeatherUserUseCase {
     private final WebClient.Builder webClientBuilder;
     private final GroupManagementUseCase groupManagementUseCase;
     private final GroupMembershipService membershipService;
+
 
     @Value("${telegram.bot.token}")
     private String botToken;
@@ -54,7 +53,7 @@ public class WeatherUserService implements WeatherUserUseCase {
 
     @Override
     public String authenticateWithInitData(String initData) {
-        // 1. Проверка подписи
+        // 1. Верификация через нашу реализацию
         if (!verifyInitData(initData)) {
             log.warn("Invalid initData signature");
             throw new SecurityException("Неверная подпись данных");
@@ -66,12 +65,11 @@ public class WeatherUserService implements WeatherUserUseCase {
         if (userId == null) {
             throw new SecurityException("Не удалось извлечь user.id из initData");
         }
-        Long chatId = extractChatId(params); // может быть null
+        Long chatId = extractChatId(params);
 
         // 3. Получаем все активные группы
         List<TelegramGroup> activeGroups = groupManagementUseCase.getActiveGroups();
         if (activeGroups.isEmpty()) {
-            log.warn("No active groups configured");
             throw new UnauthorizedException("В системе нет активных групп. Обратитесь к администратору.");
         }
 
@@ -87,7 +85,6 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
 
         if (uniqueCityIds.isEmpty()) {
-            log.warn("User {} is not a member of any allowed group", userId);
             throw new UnauthorizedException("Вы не состоите ни в одной разрешённой группе. Доступ к прогнозу погоды запрещён.");
         }
 
@@ -97,7 +94,6 @@ public class WeatherUserService implements WeatherUserUseCase {
         log.info("JWT generated for user {} via initData", userId);
         return token;
     }
-
 
     @Override
     @Deprecated
@@ -158,43 +154,66 @@ public class WeatherUserService implements WeatherUserUseCase {
      * 1. Удалить параметр hash.
      * 2. Оставшиеся пары key=value отсортировать по ключу и объединить через \n.
      * 3. Вычислить HMAC-SHA256 от полученной строки, используя секретный ключ:
-     *    secret = HMAC-SHA256("WebAppData", botToken)
+     * secret = HMAC-SHA256("WebAppData", botToken)
      * 4. Сравнить полученный хеш с переданным (в шестнадцатеричном виде).
      */
     public boolean verifyInitData(String initData) {
-        log.info("=== VERIFY INIT DATA ===");
-        if (initData == null || initData.isBlank()) {
-            log.warn("initData is null or blank");
+        if (initData == null || initData.isEmpty()) {
+            log.warn("initData is null or empty");
             return false;
         }
 
-        Map<String, String> params = parseInitDataParams(initData);
-        String hash = params.remove("hash");
+        try {
+            // 1. Разбираем параметры
+            Map<String, String> params = new LinkedHashMap<>();
+            for (String pair : initData.split("&")) {
+                String[] keyValue = pair.split("=", 2);
+                if (keyValue.length == 2) {
+                    String key = keyValue[0];
+                    String value = URLDecoder.decode(keyValue[1], StandardCharsets.UTF_8.name());
+                    params.put(key, value);
+                }
+            }
 
-        if (hash == null || hash.isEmpty()) {
-            log.warn("Hash is missing");
+            // 2. Извлекаем и удаляем hash
+            String receivedHash = params.remove("hash");
+            if (receivedHash == null) {
+                log.warn("Hash parameter not found");
+                return false;
+            }
+
+            // 3. Удаляем signature (используется только для сторонней валидации)
+            params.remove("signature");
+
+            // 4. Сортируем ключи и формируем строку для проверки
+            String dataCheckString = params.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(entry -> entry.getKey() + "=" + entry.getValue())
+                    .collect(Collectors.joining("\n"));
+
+            log.debug("Data check string:\n{}", dataCheckString);
+
+            // 5. Вычисляем секретный ключ: HMAC-SHA256(bot_token, "WebAppData")
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(
+                    hmacSha256(botToken.getBytes(StandardCharsets.UTF_8), "WebAppData".getBytes(StandardCharsets.UTF_8)),
+                    "HmacSHA256"
+            );
+            hmac.init(secretKey);
+
+            // 6. Вычисляем hash
+            byte[] calculatedHashBytes = hmac.doFinal(dataCheckString.getBytes(StandardCharsets.UTF_8));
+            String calculatedHash = bytesToHex(calculatedHashBytes);
+
+            log.debug("Received hash: {}", receivedHash);
+            log.debug("Calculated hash: {}", calculatedHash);
+
+            return calculatedHash.equals(receivedHash);
+
+        } catch (Exception e) {
+            log.error("Error verifying init data", e);
             return false;
         }
-
-        // Сортируем ключи и формируем строку для проверки
-        String checkString = params.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .collect(Collectors.joining("\n"));
-
-        log.info("Check string:\n{}", checkString);
-
-        // Генерация секретного ключа
-        String secretKey = hmacSha256("WebAppData", botToken);
-        String expectedHash = hmacSha256(checkString, secretKey);
-
-        log.info("Expected hash: {}", expectedHash);
-        log.info("Actual hash: {}", hash);
-
-        boolean isValid = expectedHash.equals(hash);
-        log.info("Verification result: {}", isValid);
-
-        return isValid;
     }
 
     private String generateJwtForUser(Long userId, Long chatId, List<Long> cityIds) {
@@ -237,14 +256,13 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
     }
 
-    private String hmacSha256(String data, String key) {
+    private byte[] hmacSha256(byte[] key, byte[] message) {
         try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKeySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-            mac.init(secretKeySpec);
-            byte[] result = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(result).toLowerCase();
-        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            Mac hmac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(key, "HmacSHA256");
+            hmac.init(secretKeySpec);
+            return hmac.doFinal(message);
+        } catch (Exception e) {
             throw new RuntimeException("HMAC-SHA256 error", e);
         }
     }
@@ -289,6 +307,7 @@ public class WeatherUserService implements WeatherUserUseCase {
             return null;
         }
     }
+
     @Deprecated
     private boolean isAuthDateValid(Map<String, String> params) {
         String authDateStr = params.get("auth_date");
@@ -350,5 +369,6 @@ public class WeatherUserService implements WeatherUserUseCase {
 
     // ==================== Внутренний record для хранения данных кода ====================
 
-    private record CodeData(Long userId, Long chatId, List<Long> cityIds, long expiresAt) {}
+    private record CodeData(Long userId, Long chatId, List<Long> cityIds, long expiresAt) {
+    }
 }
