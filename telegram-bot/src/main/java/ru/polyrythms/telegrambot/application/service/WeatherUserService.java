@@ -162,23 +162,46 @@ public class WeatherUserService implements WeatherUserUseCase {
      * 4. Сравнить полученный хеш с переданным (в шестнадцатеричном виде).
      */
     public boolean verifyInitData(String initData) {
-        if (initData == null || initData.isBlank()) return false;
+        log.info("=== VERIFY INIT DATA ===");
+        log.info("Raw initData: {}", initData);
+
+        if (initData == null || initData.isBlank()) {
+            log.warn("initData is null or blank");
+            return false;
+        }
 
         Map<String, String> params = parseInitDataParams(initData);
-        String hash = params.remove("hash");
-        if (hash == null || hash.isEmpty()) return false;
+        log.info("Parsed params keys: {}", params.keySet());
 
-        // Формируем строку для проверки: отсортированные key=value через \n
+        String hash = params.remove("hash");
+        log.info("Extracted hash: {}", hash);
+
+        if (hash == null || hash.isEmpty()) {
+            log.warn("Hash is missing");
+            return false;
+        }
+
+        // Формируем строку для проверки
         String checkString = params.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(e -> e.getKey() + "=" + e.getValue())
                 .collect(Collectors.joining("\n"));
 
+        log.info("Check string:\n{}", checkString);
+
         // Генерация секретного ключа
         String secretKey = hmacSha256("WebAppData", botToken);
-        String expectedHash = hmacSha256(checkString, secretKey);
+        log.info("Bot token used: {}", botToken);
+        log.info("Secret key (first 20 chars): {}", secretKey.substring(0, Math.min(20, secretKey.length())));
 
-        return expectedHash.equals(hash);
+        String expectedHash = hmacSha256(checkString, secretKey);
+        log.info("Expected hash: {}", expectedHash);
+        log.info("Actual hash: {}", hash);
+
+        boolean isValid = expectedHash.equals(hash);
+        log.info("Verification result: {}", isValid);
+
+        return isValid;
     }
 
     private String generateJwtForUser(Long userId, Long chatId, List<Long> cityIds) {
