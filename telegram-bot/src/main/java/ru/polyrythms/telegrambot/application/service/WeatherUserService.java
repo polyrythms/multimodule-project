@@ -8,9 +8,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import ru.polyrythms.telegrambot.application.port.input.GroupManagementUseCase;
 import ru.polyrythms.telegrambot.application.port.input.WeatherAdminUseCase;
 import ru.polyrythms.telegrambot.application.port.input.WeatherUserUseCase;
+import ru.polyrythms.telegrambot.domain.exception.UnauthorizedException;
 import ru.polyrythms.telegrambot.domain.model.City;
+import ru.polyrythms.telegrambot.domain.model.TelegramGroup;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -27,8 +30,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WeatherUserService implements WeatherUserUseCase {
 
-    private final WeatherAdminUseCase weatherAdmin;
+    private final WeatherAdminUseCase weatherAdminUseCase;
     private final WebClient.Builder webClientBuilder;
+    private final GroupManagementUseCase groupManagementUseCase;
+    private final GroupMembershipService membershipService;
 
     @Value("${telegram.bot.token}")
     private String botToken;
@@ -40,16 +45,64 @@ public class WeatherUserService implements WeatherUserUseCase {
     private String authServiceUrl;
 
     // Хранилище кодов: code -> CodeData
+
+    @Deprecated
     private final Map<String, CodeData> codeStore = new ConcurrentHashMap<>();
     private static final long CODE_TTL_MS = 5 * 60 * 1000; // 5 минут
     private static final long INIT_DATA_MAX_AGE_SECONDS = 24 * 60 * 60; // 24 часа
-
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public String authenticateWithInitData(String initData) {
+        // 1. Проверка подписи
+        if (!verifyInitData(initData)) {
+            log.warn("Invalid initData signature");
+            throw new SecurityException("Неверная подпись данных");
+        }
+
+        // 2. Парсинг параметров
+        Map<String, String> params = parseInitDataParams(initData);
+        Long userId = extractUserId(params);
+        if (userId == null) {
+            throw new SecurityException("Не удалось извлечь user.id из initData");
+        }
+        Long chatId = extractChatId(params); // может быть null
+
+        // 3. Получаем все активные группы
+        List<TelegramGroup> activeGroups = groupManagementUseCase.getActiveGroups();
+        if (activeGroups.isEmpty()) {
+            log.warn("No active groups configured");
+            throw new UnauthorizedException("В системе нет активных групп. Обратитесь к администратору.");
+        }
+
+        // 4. Проверяем членство пользователя в каждой группе и собираем cityIds
+        Set<Long> uniqueCityIds = new HashSet<>();
+        for (TelegramGroup group : activeGroups) {
+            if (membershipService.isUserMemberOfGroup(group.getChatId(), userId)) {
+                List<City> cities = weatherAdminUseCase.getCitiesForGroup(group.getChatId());
+                for (City city : cities) {
+                    uniqueCityIds.add(city.getId());
+                }
+            }
+        }
+
+        if (uniqueCityIds.isEmpty()) {
+            log.warn("User {} is not a member of any allowed group", userId);
+            throw new UnauthorizedException("Вы не состоите ни в одной разрешённой группе. Доступ к прогнозу погоды запрещён.");
+        }
+
+        // 5. Генерируем JWT
+        List<Long> cityIds = new ArrayList<>(uniqueCityIds);
+        String token = generateJwtForUser(userId, chatId, cityIds);
+        log.info("JWT generated for user {} via initData", userId);
+        return token;
+    }
 
 
     @Override
+    @Deprecated
     public String generateWeatherCode(Long userId, Long chatId) {
-        List<City> cities = weatherAdmin.getCitiesForGroup(chatId);
+        List<City> cities = weatherAdminUseCase.getCitiesForGroup(chatId);
         if (cities.isEmpty()) {
             throw new IllegalStateException("Нет доступных городов для этой группы");
         }
@@ -61,6 +114,7 @@ public class WeatherUserService implements WeatherUserUseCase {
     }
 
     @Override
+    @Deprecated
     public String exchangeCode(String code, String initData) {
 //        // 1. Проверка подписи initData
 //        if (!verifyInitData(initData)) {
@@ -107,7 +161,7 @@ public class WeatherUserService implements WeatherUserUseCase {
      *    secret = HMAC-SHA256("WebAppData", botToken)
      * 4. Сравнить полученный хеш с переданным (в шестнадцатеричном виде).
      */
-    private boolean verifyInitData(String initData) {
+    public boolean verifyInitData(String initData) {
         if (initData == null || initData.isBlank()) return false;
 
         Map<String, String> params = parseInitDataParams(initData);
@@ -125,6 +179,46 @@ public class WeatherUserService implements WeatherUserUseCase {
         String expectedHash = hmacSha256(checkString, secretKey);
 
         return expectedHash.equals(hash);
+    }
+
+    private String generateJwtForUser(Long userId, Long chatId, List<Long> cityIds) {
+        try {
+            WebClient client = webClientBuilder.baseUrl(authServiceUrl).build();
+            Map<String, Object> request = Map.of(
+                    "telegramId", userId,
+                    "chatId", chatId != null ? chatId : 0, // auth-service может ожидать Long, но если null, передаём 0
+                    "cityIds", cityIds,
+                    "role", "MEMBER"
+            );
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = client.post()
+                    .uri("/internal/grant")
+                    .header("X-Internal-Auth", internalAuthKey)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            if (response == null || !response.containsKey("accessToken")) {
+                throw new RuntimeException("Неверный ответ от auth-service");
+            }
+            return (String) response.get("accessToken");
+        } catch (Exception e) {
+            log.error("Failed to call auth-service", e);
+            throw new RuntimeException("Ошибка авторизации: " + e.getMessage());
+        }
+    }
+
+    public Long extractChatId(Map<String, String> params) {
+        String chatJson = params.get("chat");
+        if (chatJson == null) return null;
+        try {
+            JsonNode node = objectMapper.readTree(chatJson);
+            return node.get("id").asLong();
+        } catch (Exception e) {
+            log.warn("Failed to parse chat JSON: {}", chatJson, e);
+            return null;
+        }
     }
 
     private String hmacSha256(String data, String key) {
@@ -147,7 +241,7 @@ public class WeatherUserService implements WeatherUserUseCase {
         return sb.toString();
     }
 
-    private Map<String, String> parseInitDataParams(String initData) {
+    public Map<String, String> parseInitDataParams(String initData) {
         return Arrays.stream(initData.split("&"))
                 .map(pair -> pair.split("=", 2))
                 .collect(Collectors.toMap(
@@ -167,7 +261,7 @@ public class WeatherUserService implements WeatherUserUseCase {
 
     // ==================== Извлечение данных из initData ====================
 
-    private Long extractUserId(Map<String, String> params) {
+    public Long extractUserId(Map<String, String> params) {
         String userJson = params.get("user");
         if (userJson == null) return null;
         try {
@@ -178,7 +272,7 @@ public class WeatherUserService implements WeatherUserUseCase {
             return null;
         }
     }
-
+    @Deprecated
     private boolean isAuthDateValid(Map<String, String> params) {
         String authDateStr = params.get("auth_date");
         if (authDateStr == null) return false;
@@ -191,7 +285,6 @@ public class WeatherUserService implements WeatherUserUseCase {
         }
     }
 
-    // ==================== Вызов auth-service ====================
 
     private String callAuthService(Long userId, Long chatId, List<Long> cityIds) {
         try {
@@ -222,6 +315,7 @@ public class WeatherUserService implements WeatherUserUseCase {
     // ==================== Очистка просроченных кодов ====================
 
     @Scheduled(fixedRate = 60000) // каждую минуту
+    @Deprecated
     public void cleanExpiredCodes() {
         long now = System.currentTimeMillis();
         int removed = 0;

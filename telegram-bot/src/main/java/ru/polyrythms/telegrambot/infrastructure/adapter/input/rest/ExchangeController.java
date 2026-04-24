@@ -12,6 +12,7 @@ import ru.polyrythms.telegrambot.application.port.input.WeatherUserUseCase;
 @RestController
 @RequestMapping("/exchange")
 @RequiredArgsConstructor
+@Deprecated
 public class ExchangeController {
     private final WeatherUserUseCase weatherUserUseCase;
 
@@ -21,6 +22,6 @@ public class ExchangeController {
         return ResponseEntity.ok(new ExchangeResponse(token));
     }
 
-    record ExchangeRequest(@NotBlank String code, @NotBlank String initData) {}
-    record ExchangeResponse(String accessToken) {}
+    public record ExchangeRequest(@NotBlank String code, @NotBlank String initData) {}
+    public record ExchangeResponse(String accessToken) {}
 }

@@ -14,6 +14,9 @@ public class BotMetrics {
     private final Counter errorsOccurred;
     private final Counter tasksSubmitted;
     private final Counter tasksRejected;
+    private final Counter authInitAttempt;
+    private final Counter authInitSuccess;
+    private final Counter authInitFailure;
     private final Timer processingTime;
 
     public BotMetrics(MeterRegistry meterRegistry) {
@@ -43,6 +46,18 @@ public class BotMetrics {
 
         this.processingTime = Timer.builder("telegram.processing.time")
                 .description("Message processing time")
+                .register(meterRegistry);
+
+        this.authInitAttempt = Counter.builder("telegram.auth.init.attempt")
+                .description("Number of /auth/init attempts")
+                .register(meterRegistry);
+
+        this.authInitSuccess = Counter.builder("telegram.auth.init.success")
+                .description("Number of successful /auth/init")
+                .register(meterRegistry);
+
+        this.authInitFailure = Counter.builder("telegram.auth.init.failure")
+                .description("Number of failed /auth/init")
                 .register(meterRegistry);
     }
 
@@ -77,4 +92,10 @@ public class BotMetrics {
     public void stopTimer(Timer.Sample sample) {
         sample.stop(processingTime);
     }
+
+    public void recordAuthInitAttempt() { authInitAttempt.increment(); }
+
+    public void recordAuthInitSuccess() { authInitSuccess.increment(); }
+
+    public void recordAuthInitFailure() { authInitFailure.increment(); }
 }

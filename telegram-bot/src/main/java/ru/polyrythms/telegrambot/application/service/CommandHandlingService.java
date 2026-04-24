@@ -105,7 +105,7 @@ public class CommandHandlingService implements CommandHandlingUseCase {
                     handleRemoveCityFromGroupCommand(chatId, userId, fullText);
                     break;
                 case "/weather":
-                    handleWeatherCommand(chatId, userId);
+//                    handleWeatherCommand(chatId, userId);
                     break;
                 default:
                     messageSender.sendMessage(chatId, "❌ Неизвестная команда. Используйте /help для списка команд.");
@@ -116,7 +116,6 @@ public class CommandHandlingService implements CommandHandlingUseCase {
         }
     }
 
-    // ==================== Существующие команды (без изменений) ====================
 
     private void handleStartCommand(Long chatId, Long userId) {
         String welcome = "🤖 Бот для обработки голосовых сообщений и погоды\n\n";
@@ -319,7 +318,6 @@ public class CommandHandlingService implements CommandHandlingUseCase {
         }
     }
 
-    // ==================== Новые команды для погоды ====================
 
     private void handleAddCityCommand(Long chatId, Long userId, String fullText) {
         if (!adminManagementUseCase.isAdmin(userId)) {
@@ -396,7 +394,7 @@ public class CommandHandlingService implements CommandHandlingUseCase {
             messageSender.sendMessage(chatId, "❌ Ошибка: " + e.getMessage());
         }
     }
-
+    @Deprecated
     private void handleWeatherCommand(Long chatId, Long userId) {
         // 1. Проверяем, что пользователь является участником группы
         if (!membershipService.isUserMemberOfGroup(chatId, userId)) {
@@ -435,7 +433,6 @@ public class CommandHandlingService implements CommandHandlingUseCase {
         }
     }
 
-    // ==================== Утилиты ====================
 
     private Long parseUserId(String input) {
         if (input.startsWith("@")) {
